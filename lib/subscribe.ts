@@ -25,6 +25,7 @@ export const createEmptyReaderSearchHighlight = (): ReaderSearchHighlight => ({
 
 export enum EVENT_NAME {
   CLOSE_POPOVER = 'close-popover',
+  OPEN_READER_MENU_SEARCH = 'open-reader-menu-search',
   SET_CURRENT_BOOK_PAGE = 'set-current-book-page',
   SET_CURRENT_BOOK_DETAIL = 'set-current-book-detail',
   SET_READER_ANNOTATIONS = 'set-reader-annotations',

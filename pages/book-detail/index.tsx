@@ -9,7 +9,7 @@ import type { ReaderBlock, TextSyntaxTree } from '@/lib/transformText';
 import { ROUTE_PATH } from '@/router';
 import { startSpaViewTransition } from '@/lib/navigation';
 import { BookDetailOperate, MobileBookDetailOperate } from '@/components/DetailOperate';
-import { clearBookDetailMenuSearchState } from '@/components/DetailMenu';
+import { clearBookDetailMenuSearchState, requestBookDetailMenuSearch } from '@/components/DetailMenu';
 import {
   EVENT_NAME,
   getCurrentBookDetail,
@@ -806,6 +806,7 @@ interface ReaderSelectionMenuProps {
   onDeleteAnnotation: (annotationIds?: string[]) => void;
   onDeleteNote: () => void;
   onOpenNote: () => void;
+  onSearchSelection: (keyword: string) => void;
   onSelectColor: (type: ReaderStyleAnnotationType, color: string) => void;
   selectedColors: ReaderAnnotationColorMap;
   state: ReaderSelectionMenuState | null;
@@ -890,6 +891,15 @@ const SelectionNoteIcon = (): React.JSX.Element => (
   </svg>
 );
 
+const SelectionSearchIcon = (): React.JSX.Element => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" aria-hidden="true">
+    <g fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2">
+      <path d="m21 21l-4.34-4.34" />
+      <circle cx="11" cy="11" r="8" />
+    </g>
+  </svg>
+);
+
 const SelectionClearFormatIcon = (): React.JSX.Element => (
   <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" aria-hidden="true">
     <path
@@ -921,6 +931,7 @@ const ReaderSelectionMenu = ({
   onDeleteAnnotation,
   onDeleteNote,
   onOpenNote,
+  onSearchSelection,
   onSelectColor,
   selectedColors,
 }: ReaderSelectionMenuProps): React.JSX.Element | null => {
@@ -981,6 +992,12 @@ const ReaderSelectionMenu = ({
     e.preventDefault();
     e.stopPropagation();
     onOpenNote();
+  };
+
+  const searchSelection = (e: React.MouseEvent<HTMLButtonElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    onSearchSelection(currentState.text);
   };
 
   const deleteAnnotation = (e: React.MouseEvent<HTMLButtonElement>) => {
@@ -1092,6 +1109,10 @@ const ReaderSelectionMenu = ({
       <button className="reader-selection-menu-item second-item" type="button" onClick={openNote}>
         <SelectionNoteIcon />
         <span>写想法</span>
+      </button>
+      <button className="reader-selection-menu-item second-item" type="button" onClick={searchSelection}>
+        <SelectionSearchIcon />
+        <span>查询</span>
       </button>
       {showClearFormat && (
         <button className="reader-selection-menu-item second-item" type="button" onClick={deleteAnnotation}>
@@ -1721,6 +1742,16 @@ const useReaderAnnotationActions = ({
     });
   }, [selectionMenuState]);
 
+  const handleSearchSelection = useCallback(
+    (keyword: string) => {
+      const normalizedKeyword = keyword.trim();
+      if (!normalizedKeyword) return;
+      requestBookDetailMenuSearch(normalizedKeyword);
+      clearSelection();
+    },
+    [clearSelection],
+  );
+
   const handleCancelNote = useCallback(() => {
     setNoteEditorState(null);
     clearSelection();
@@ -1754,6 +1785,7 @@ const useReaderAnnotationActions = ({
     handleDeleteNote,
     handleOpenNote,
     handleSaveNote,
+    handleSearchSelection,
     handleSelectColor,
     noteEditorState,
   };
@@ -1785,6 +1817,7 @@ const ReaderScrollContent = ({
     handleDeleteNote,
     handleOpenNote,
     handleSaveNote,
+    handleSearchSelection,
     handleSelectColor,
     noteEditorState,
   } = useReaderAnnotationActions({ bookId, clearSelection, selectionMenuState });
@@ -1968,6 +2001,7 @@ const ReaderScrollContent = ({
         onDeleteAnnotation={handleDeleteAnnotation}
         onDeleteNote={handleDeleteNote}
         onOpenNote={handleOpenNote}
+        onSearchSelection={handleSearchSelection}
         onSelectColor={handleSelectColor}
       />
       <ReaderNoteModal state={noteEditorState} onCancel={handleCancelNote} onSave={handleSaveNote} />
@@ -2025,6 +2059,7 @@ const ReaderPagedContent = ({
     handleDeleteNote,
     handleOpenNote,
     handleSaveNote,
+    handleSearchSelection,
     handleSelectColor,
     noteEditorState,
   } = useReaderAnnotationActions({ bookId, clearSelection, selectionMenuState });
@@ -2557,6 +2592,7 @@ const ReaderPagedContent = ({
         onDeleteAnnotation={handleDeleteAnnotation}
         onDeleteNote={handleDeleteNote}
         onOpenNote={handleOpenNote}
+        onSearchSelection={handleSearchSelection}
         onSelectColor={handleSelectColor}
       />
       <ReaderNoteModal state={noteEditorState} onCancel={handleCancelNote} onSave={handleSaveNote} />

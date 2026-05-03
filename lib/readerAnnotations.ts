@@ -32,12 +32,22 @@ export const READER_ANNOTATION_COLORS = ['#ff909c', '#b89fff', '#74b4ff', '#70d3
 
 export const DEFAULT_READER_ANNOTATION_COLOR = READER_ANNOTATION_COLORS[4];
 
+const DEFAULT_READER_STYLE_ANNOTATION_COLORS: Record<ReaderStyleAnnotationType, string> = {
+  marker: READER_ANNOTATION_COLORS[4],
+  underline: READER_ANNOTATION_COLORS[0],
+  wave: READER_ANNOTATION_COLORS[2],
+};
+
 const ANNOTATION_STORAGE_KEY = 'weread-reader-annotations-v1';
 
 const COLOR_STORAGE_KEY = 'weread-reader-annotation-color';
 
 const getColorStorageKey = (type?: ReaderStyleAnnotationType): string => {
   return type ? `${COLOR_STORAGE_KEY}-${type}` : COLOR_STORAGE_KEY;
+};
+
+const getDefaultReaderAnnotationColor = (type?: ReaderStyleAnnotationType): string => {
+  return type ? DEFAULT_READER_STYLE_ANNOTATION_COLORS[type] : DEFAULT_READER_ANNOTATION_COLOR;
 };
 
 const canUseStorage = (): boolean => typeof window !== 'undefined' && typeof window.localStorage !== 'undefined';
@@ -196,18 +206,20 @@ export const deleteReaderAnnotation = (bookId: string, annotationId: string): vo
 };
 
 export const getStoredReaderAnnotationColor = (type?: ReaderStyleAnnotationType): string => {
-  if (!canUseStorage()) return DEFAULT_READER_ANNOTATION_COLOR;
-  const value = window.localStorage.getItem(getColorStorageKey(type)) || window.localStorage.getItem(COLOR_STORAGE_KEY);
+  const defaultColor = getDefaultReaderAnnotationColor(type);
+  if (!canUseStorage()) return defaultColor;
+  const value = window.localStorage.getItem(getColorStorageKey(type));
   return READER_ANNOTATION_COLORS.includes(value as (typeof READER_ANNOTATION_COLORS)[number])
-    ? value || DEFAULT_READER_ANNOTATION_COLOR
-    : DEFAULT_READER_ANNOTATION_COLOR;
+    ? value || defaultColor
+    : defaultColor;
 };
 
 export const saveReaderAnnotationColor = (color: string, type?: ReaderStyleAnnotationType): void => {
   if (!canUseStorage()) return;
+  const defaultColor = getDefaultReaderAnnotationColor(type);
   const normalized = READER_ANNOTATION_COLORS.includes(color as (typeof READER_ANNOTATION_COLORS)[number])
     ? color
-    : DEFAULT_READER_ANNOTATION_COLOR;
+    : defaultColor;
   window.localStorage.setItem(getColorStorageKey(type), normalized);
 };
 

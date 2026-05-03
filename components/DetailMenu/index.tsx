@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { debounce, getQuery } from 'ranuts/utils';
 import { Catalogue } from '@/components/Catalogue';
 import {
@@ -60,6 +60,8 @@ const ReaderSearchIcon = (): React.JSX.Element => (
 
 const readerMenuSearchSessionState = new Map<string, ReaderMenuSearchSessionState>();
 
+let pendingReaderMenuSearchKeyword = '';
+
 const createEmptyReaderMenuSearchState = (): ReaderMenuSearchSessionState => ({
   keyword: '',
   searchResult: [],
@@ -103,12 +105,27 @@ const clearReaderSearchHighlight = (): void => {
 };
 
 export const clearBookDetailMenuSearchState = (bookId?: string): void => {
+  pendingReaderMenuSearchKeyword = '';
   if (bookId) {
     readerMenuSearchSessionState.delete(bookId);
   } else {
     readerMenuSearchSessionState.clear();
   }
   clearReaderSearchHighlight();
+};
+
+export const requestBookDetailMenuSearch = (keyword: string): void => {
+  const normalizedKeyword = trim(keyword);
+  if (!normalizedKeyword) return;
+  const key = getReaderMenuSearchKey();
+  pendingReaderMenuSearchKeyword = normalizedKeyword;
+  saveReaderMenuSearchState(key, {
+    keyword: normalizedKeyword,
+    searchResult: [],
+    searchResultScrollTop: 0,
+    showSearchResult: true,
+  });
+  syncHook.call(EVENT_NAME.OPEN_READER_MENU_SEARCH);
 };
 
 const clampSearchResultPage = (page: number, totalPage: number): number => {
@@ -283,6 +300,26 @@ export const BookDetailMenu = (): React.JSX.Element => {
     [searchCacheKey],
   );
 
+  const startSearchFromKeyword = useCallback(
+    (keyword: string) => {
+      const normalizedSearchValue = trim(keyword);
+      if (!normalizedSearchValue) return;
+      latestSearchValueRef.current = normalizedSearchValue;
+      searchResultScrollTopRef.current = 0;
+      setSearchKeyword(normalizedSearchValue);
+      setShowSearchResult(true);
+      setSearchResult([]);
+      persistSearchState({
+        keyword: normalizedSearchValue,
+        searchResult: [],
+        searchResultScrollTop: 0,
+        showSearchResult: true,
+      });
+      onSearch(normalizedSearchValue);
+    },
+    [onSearch, searchCacheKey],
+  );
+
   const clearSearch = () => {
     latestSearchValueRef.current = '';
     searchResultScrollTopRef.current = 0;
@@ -338,6 +375,25 @@ export const BookDetailMenu = (): React.JSX.Element => {
       });
     }
   }, [initialSearchState, searchCacheKey]);
+
+  useEffect(() => {
+    if (initialSearchState.keyword && initialSearchState.showSearchResult && initialSearchState.searchResult.length === 0) {
+      startSearchFromKeyword(initialSearchState.keyword);
+    }
+  }, [initialSearchState, startSearchFromKeyword]);
+
+  useEffect(() => {
+    const runRequestedSearch = () => {
+      const keyword = pendingReaderMenuSearchKeyword || getReaderMenuSearchState(searchCacheKey).keyword;
+      if (!keyword) return;
+      pendingReaderMenuSearchKeyword = '';
+      startSearchFromKeyword(keyword);
+    };
+    syncHook.tap(EVENT_NAME.OPEN_READER_MENU_SEARCH, runRequestedSearch);
+    return () => {
+      syncHook.off(EVENT_NAME.OPEN_READER_MENU_SEARCH, runRequestedSearch);
+    };
+  }, [searchCacheKey, startSearchFromKeyword]);
 
   useEffect(() => {
     const clearSessionSearchState = () => {

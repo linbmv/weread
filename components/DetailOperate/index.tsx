@@ -1460,18 +1460,22 @@ export const BookDetailOperate = (): React.JSX.Element => {
     }, PANEL_MOTION_DURATION);
   }, [clearPanelCloseTimer]);
 
+  const openPanel = useCallback((panel: ReaderControlPanelType) => {
+    clearPanelCloseTimer();
+    setRenderedPanel(panel);
+    setPanelMotion(activePanel ? 'switch' : 'enter');
+    setPanelMotionId((prev) => prev + 1);
+    setActivePanel(panel);
+  }, [activePanel, clearPanelCloseTimer]);
+
   const togglePanel = useCallback((panel: ReaderControlPanelType) => {
     if (activePanel === panel) {
       closePanel();
       return;
     }
 
-    clearPanelCloseTimer();
-    setRenderedPanel(panel);
-    setPanelMotion(activePanel ? 'switch' : 'enter');
-    setPanelMotionId((prev) => prev + 1);
-    setActivePanel(panel);
-  }, [activePanel, clearPanelCloseTimer, closePanel]);
+    openPanel(panel);
+  }, [activePanel, closePanel, openPanel]);
 
   const getPanelAnchorElement = (panel: ReaderControlPanelType | null): HTMLElement | null => {
     if (panel === 'menu') return menuButtonRef.current;
@@ -1503,6 +1507,16 @@ export const BookDetailOperate = (): React.JSX.Element => {
       syncHook.off(EVENT_NAME.CLOSE_POPOVER, closePanel);
     };
   }, [closePanel]);
+
+  useEffect(() => {
+    const openMenuSearchPanel = () => {
+      openPanel('menu');
+    };
+    syncHook.tap(EVENT_NAME.OPEN_READER_MENU_SEARCH, openMenuSearchPanel);
+    return () => {
+      syncHook.off(EVENT_NAME.OPEN_READER_MENU_SEARCH, openMenuSearchPanel);
+    };
+  }, [openPanel]);
 
   useEffect(() => {
     if (!activePanel) return;
