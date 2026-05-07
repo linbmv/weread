@@ -11,6 +11,7 @@ import {
   setReaderNavigationTarget,
   syncHook,
 } from '@/lib/subscribe';
+import { showGlobalFallback } from '@/lib/globalFallback';
 import { type ReaderAnnotation, getAnnotationBlock, getReaderAnnotations } from '@/lib/readerAnnotations';
 import {
   DEFAULT_READER_FONT,
@@ -322,6 +323,12 @@ const ReaderFontIcon = (): React.JSX.Element => <OcticonFont />;
 const ReaderSunIcon = (): React.JSX.Element => <OcticonSun />;
 
 const ReaderMoonIcon = (): React.JSX.Element => <OcticonMoon />;
+
+const ReaderControlTooltip = ({ label }: { label: string }): React.JSX.Element => (
+  <div aria-hidden="true" className="reader-tooltip-item reader-tooltip-item-right">
+    {label}
+  </div>
+);
 
 interface ReaderSpacingControlProps {
   readingMode: ReaderReadingMode;
@@ -1076,13 +1083,27 @@ const ReaderNotePanel = (): React.JSX.Element => {
     (annotation: ReaderAnnotation) => {
       const block = getAnnotationBlock(textSyntaxTree, annotation);
       const titleId = annotation.titleId ?? block?.titleId ?? 0;
+      if (!block && typeof annotation.page !== 'number') {
+        showGlobalFallback({ message: '笔记定位失败，原文位置已失效', tone: 'error' });
+        return;
+      }
+      if (!block) {
+        showGlobalFallback({ message: '笔记原文位置已变化，已按页码定位', tone: 'info' });
+      }
       const page =
         typeof annotation.page === 'number' && Number.isFinite(annotation.page)
           ? annotation.page
           : (textSyntaxTree.blockIdPage[annotation.blockId] ?? textSyntaxTree.titleIdPage[titleId] ?? getPageNum());
+      const blockStartPage = textSyntaxTree.blockIdPage[annotation.blockId];
+      const blockEndPage = textSyntaxTree.blockIdPageEnd[annotation.blockId] ?? blockStartPage;
+      const blockPageOffset =
+        Number.isFinite(page) && Number.isFinite(blockStartPage)
+          ? Math.min(Math.max(page - blockStartPage, 0), Math.max((blockEndPage ?? blockStartPage) - blockStartPage, 0))
+          : undefined;
 
       setReaderNavigationTarget({
         blockId: annotation.blockId,
+        blockPageOffset,
         matchStart: annotation.startOffset,
         page,
         revision: Date.now(),
@@ -1221,15 +1242,17 @@ const ReaderThemeControl = (): React.JSX.Element => {
   };
 
   return (
-    <button
-      aria-label={theme === 'dark' ? '切换亮色主题' : '切换暗色主题'}
-      className="reader-control-button reader-theme-control"
-      title={theme === 'dark' ? '切换亮色主题' : '切换暗色主题'}
-      type="button"
-      onClick={toggleTheme}
-    >
-      {theme === 'dark' ? <ReaderSunIcon /> : <ReaderMoonIcon />}
-    </button>
+    <div className="reader-tooltip-container reader-control-tooltip-container">
+      <button
+        aria-label={theme === 'dark' ? '浅色' : '深色'}
+        className="reader-control-button reader-theme-control"
+        type="button"
+        onClick={toggleTheme}
+      >
+        {theme === 'dark' ? <ReaderSunIcon /> : <ReaderMoonIcon />}
+      </button>
+      <ReaderControlTooltip label={theme === 'dark' ? '浅色' : '深色'} />
+    </div>
   );
 };
 
@@ -1471,53 +1494,61 @@ export const BookDetailOperate = (): React.JSX.Element => {
   return (
     <>
       <div className="readerControls" ref={controlsRef}>
-        <button
-          aria-label="打开目录"
-          aria-expanded={activePanel === 'menu'}
-          className="reader-control-button reader-menu-control"
-          ref={menuButtonRef}
-          title="目录"
-          type="button"
-          onClick={() => togglePanel('menu')}
-        >
-          <ReaderMenuIcon />
-        </button>
+        <div className="reader-tooltip-container reader-control-tooltip-container">
+          <button
+            aria-label="打开目录"
+            aria-expanded={activePanel === 'menu'}
+            className="reader-control-button reader-menu-control"
+            ref={menuButtonRef}
+            type="button"
+            onClick={() => togglePanel('menu')}
+          >
+            <ReaderMenuIcon />
+          </button>
+          <ReaderControlTooltip label="目录" />
+        </div>
 
-        <button
-          aria-label="打开笔记"
-          aria-expanded={activePanel === 'note'}
-          className="reader-control-button reader-note-control"
-          ref={noteButtonRef}
-          title="笔记"
-          type="button"
-          onClick={() => togglePanel('note')}
-        >
-          <ReaderNoteIcon />
-        </button>
+        <div className="reader-tooltip-container reader-control-tooltip-container">
+          <button
+            aria-label="打开笔记"
+            aria-expanded={activePanel === 'note'}
+            className="reader-control-button reader-note-control"
+            ref={noteButtonRef}
+            type="button"
+            onClick={() => togglePanel('note')}
+          >
+            <ReaderNoteIcon />
+          </button>
+          <ReaderControlTooltip label="笔记" />
+        </div>
 
-        <button
-          aria-label="打开阅读设置"
-          aria-expanded={activePanel === 'setting'}
-          className="reader-control-button reader-setting-control"
-          ref={settingButtonRef}
-          title="阅读设置"
-          type="button"
-          onClick={() => togglePanel('setting')}
-        >
-          <ReaderSettingIcon />
-        </button>
+        <div className="reader-tooltip-container reader-control-tooltip-container">
+          <button
+            aria-label="打开阅读设置"
+            aria-expanded={activePanel === 'setting'}
+            className="reader-control-button reader-setting-control"
+            ref={settingButtonRef}
+            type="button"
+            onClick={() => togglePanel('setting')}
+          >
+            <ReaderSettingIcon />
+          </button>
+          <ReaderControlTooltip label="阅读设置" />
+        </div>
 
-        <button
-          aria-label="打开字体设置"
-          aria-expanded={activePanel === 'font'}
-          className="reader-control-button reader-font-control"
-          ref={fontButtonRef}
-          title="字体"
-          type="button"
-          onClick={() => togglePanel('font')}
-        >
-          <ReaderFontIcon />
-        </button>
+        <div className="reader-tooltip-container reader-control-tooltip-container">
+          <button
+            aria-label="打开字体设置"
+            aria-expanded={activePanel === 'font'}
+            className="reader-control-button reader-font-control"
+            ref={fontButtonRef}
+            type="button"
+            onClick={() => togglePanel('font')}
+          >
+            <ReaderFontIcon />
+          </button>
+          <ReaderControlTooltip label="字体" />
+        </div>
 
         <ReaderThemeControl />
       </div>

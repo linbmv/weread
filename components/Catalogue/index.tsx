@@ -16,6 +16,7 @@ import { getReaderBookmarkForPage } from '@/lib/readerAnnotations';
 import { getReaderProgress } from '@/lib/readerProgress';
 import { getStoredReaderReadingMode } from '@/lib/readerSettings';
 import { useResolvedBookImage } from '@/lib/useResolvedBookImage';
+import { BookCoverFallback } from '@/components/BookCard';
 import { OcticonSortAsc } from '@/components/Octicon';
 import './index.scss';
 
@@ -91,8 +92,13 @@ export const Catalogue = (): React.JSX.Element => {
   const bookDetail: BookInfo | null = getCurrentBookDetail();
   const textSyntaxTree: TextSyntaxTree = getTextSyntaxTree();
   const [currentTitleId, setCurrentTitleId] = useState(() => getCurrentTitleId(bookDetail?.id, textSyntaxTree));
+  const [coverFailed, setCoverFailed] = useState(false);
   const resolvedCover = useResolvedBookImage(bookDetail?.id, bookDetail?.image);
   const currentReadPercent = getCatalogueReadPercent(bookDetail?.id, currentTitleId);
+
+  useEffect(() => {
+    setCoverFailed(false);
+  }, [bookDetail?.id, bookDetail?.image]);
 
   const toSort = useCallback(() => {
     const next = sortDirection === SORT_DIRECTION.DOWN ? SORT_DIRECTION.UP : SORT_DIRECTION.DOWN;
@@ -181,7 +187,11 @@ export const Catalogue = (): React.JSX.Element => {
   return (
     <>
       <div className="px-7 py-2 flex flex-row flex-nowrap items-center shrink-0">
-        {resolvedCover && <img className="w-14 mr-5" src={resolvedCover} alt={bookDetail?.title} />}
+        {resolvedCover && !coverFailed ? (
+          <img className="w-14 mr-5" src={resolvedCover} alt={bookDetail?.title} onError={() => setCoverFailed(true)} />
+        ) : (
+          <BookCoverFallback className="w-14 h-20 mr-5" title={bookDetail?.title} />
+        )}
         <div>
           <div className="text-lg text-text-color-1 font-medium break-all">{bookDetail?.title}</div>
           <div className="text-sm text-text-color-2 font-medium mt-1 break-all">{bookDetail?.author}</div>

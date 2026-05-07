@@ -1,0 +1,60 @@
+.global-fallback-layer {
+  left: 0;
+  pointer-events: none;
+  position: fixed;
+  right: 0;
+  top: 28px;
+  z-index: 2000;
+  display: flex;
+  justify-content: center;
+}
+
+.global-fallback-message {
+  max-width: min(520px, calc(100vw - 40px));
+  min-height: 38px;
+  /* border: 1px solid var(--border-color-1); */
+  border-radius: 8px;
+  background: var(--front-bg-color-3);
+  color: var(--text-color-1);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+  padding: 9px 16px;
+  animation: global-fallback-in 180ms ease-out both;
+}
+
+.global-fallback-message[data-state='exiting'] {
+  animation: global-fallback-out 180ms ease-in both;
+}
+
+.global-fallback-message[data-tone='error'] {
+  border-color: rgba(255, 96, 96, 0.28);
+}
+
+.global-fallback-message[data-tone='success'] {
+  border-color: rgba(56, 169, 255, 0.28);
+}
+
+@keyframes global-fallback-in {
+  from {
+    opacity: 0;
+    transform: translate3d(0, -6px, 0) scale(0.985);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes global-fallback-out {
+  from {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+
+  to {
+    opacity: 0;
+    transform: translate3d(0, -6px, 0) scale(0.985);
+  }
+}

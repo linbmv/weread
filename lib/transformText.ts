@@ -110,23 +110,54 @@ export const arrayBufferToString = (arrayBuffer: ArrayBuffer | Uint8Array<ArrayB
   }
 };
 
-export const createReader = (file: File): Promise<Uint8Array<ArrayBuffer>> => {
+const getAbortError = (signal?: AbortSignal): Error => {
+  if (signal?.reason instanceof Error) return signal.reason;
+  return new Error('File read aborted');
+};
+
+export const createReader = (
+  file: File,
+  options: {
+    signal?: AbortSignal;
+  } = {},
+): Promise<Uint8Array<ArrayBuffer>> => {
   return new Promise((resolve, reject) => {
+    if (options.signal?.aborted) {
+      reject(getAbortError(options.signal));
+      return;
+    }
+
     const reader = new FileReader();
+    const cleanup = () => {
+      options.signal?.removeEventListener('abort', onAbort);
+    };
+    const settle = <T>(callback: (value: T) => void, value: T) => {
+      cleanup();
+      callback(value);
+    };
+    const onAbort = () => {
+      if (reader.readyState === FileReader.LOADING) {
+        reader.abort();
+        return;
+      }
+      settle(reject, getAbortError(options.signal));
+    };
+
     reader.onload = () => {
       const result = reader.result;
       if (result instanceof ArrayBuffer) {
-        resolve(new Uint8Array(result));
+        settle(resolve, new Uint8Array(result));
       } else {
-        reject(new Error('Unable to read file as ArrayBuffer'));
+        settle(reject, new Error('Unable to read file as ArrayBuffer'));
       }
     };
     reader.onerror = () => {
-      reject(reader.error || new Error('Failed to read file'));
+      settle(reject, reader.error || new Error('Failed to read file'));
     };
     reader.onabort = () => {
-      reject(new Error('File read aborted'));
+      settle(reject, getAbortError(options.signal));
     };
+    options.signal?.addEventListener('abort', onAbort, { once: true });
     reader.readAsArrayBuffer(file);
   });
 };

@@ -31,7 +31,7 @@ interface DBStrategy {
   execute(options: ExecuteOptions): void | Promise<void>;
 }
 
-type OperationType = 'search' | 'add' | 'getAll' | 'get' | 'delete';
+type OperationType = 'search' | 'add' | 'put' | 'getAll' | 'get' | 'delete';
 
 const STORE_NAME = 'books_info';
 
@@ -249,6 +249,20 @@ class AddStrategy implements DBStrategy {
   }
 }
 
+class PutStrategy implements DBStrategy {
+  execute({ store, data, operationId }: ExecuteOptions<{ bookInfo: BookRecord }>): void {
+    const { bookInfo } = data;
+    const request = store.put(bookInfo);
+    request.onsuccess = () => {
+      if (isValidBook(bookInfo)) indexBookContent(bookInfo);
+      postSuccess(operationId, projectBookForList(bookInfo));
+    };
+    request.onerror = () => {
+      postError(operationId, request.error?.message || 'put error');
+    };
+  }
+}
+
 class DeleteStrategy implements DBStrategy {
   execute({ store, data, operationId }: ExecuteOptions<{ key: string }>): void {
     const { key } = data;
@@ -305,6 +319,7 @@ class GetStrategy implements DBStrategy {
 const strategyFactory: Record<OperationType, DBStrategy> = {
   search: new SearchStrategy(),
   add: new AddStrategy(),
+  put: new PutStrategy(),
   getAll: new GetAllStrategy(),
   get: new GetStrategy(),
   delete: new DeleteStrategy(),
@@ -345,7 +360,10 @@ self.onmessage = async (e: MessageEvent<WorkerInboundMessage>) => {
   const { type, data, dbName, storeName, operationId } = e.data;
   try {
     const database = await getDatabase(dbName);
-    const transaction = database.transaction(storeName, type === 'add' || type === 'delete' ? 'readwrite' : 'readonly');
+    const transaction = database.transaction(
+      storeName,
+      type === 'add' || type === 'put' || type === 'delete' ? 'readwrite' : 'readonly',
+    );
     const store = transaction.objectStore(storeName);
 
     const strategy = strategyFactory[type];

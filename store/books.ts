@@ -12,6 +12,7 @@ export interface BookInfo {
   image: string;
   document: ReaderBookDocument;
   sourceType: ReaderBookSourceType;
+  fingerprint?: string;
   createTime?: number;
   modifyTime?: number;
 }
@@ -30,7 +31,7 @@ export const createBookStore = (): void => {
   db.createObjectStore({ storeName: STORE_NAME_BOOKS_INFO_KEY, options: { keyPath: 'id' } });
 };
 
-const computeBookFingerprint = async (data: {
+export const getBookFingerprint = async (data: {
   author: string;
   document: ReaderBookDocument;
   sourceType: ReaderBookSourceType;
@@ -75,7 +76,10 @@ interface WorkerResponseEnvelope<T> extends IDBResult<T> {
   operationId: string;
 }
 
-const performWorkerOperation = <T = unknown>(type: string, data: Record<string, unknown> = {}): Promise<IDBResult<T>> => {
+const performWorkerOperation = <T = unknown>(
+  type: string,
+  data: Record<string, unknown> = {},
+): Promise<IDBResult<T>> => {
   return new Promise((resolve) => {
     if (!db.database) {
       resolve(errorResult<T>('Database not initialized'));
@@ -136,19 +140,41 @@ const performWorkerOperation = <T = unknown>(type: string, data: Record<string, 
 };
 
 export const addBook = async (data: {
+  id?: string;
+  fingerprint?: string;
   title: string;
   author?: string;
   image?: string;
   document: ReaderBookDocument;
   sourceType: ReaderBookSourceType;
   resources?: BookResourceRecord[];
+  overwrite?: boolean;
 }): Promise<IDBResult<BookInfo>> => {
-  const { title = '', author = '', image = '', document, sourceType, resources = [] } = data;
-  const id = await computeBookFingerprint({ author, document, sourceType, title });
+  const {
+    id: preferredId,
+    fingerprint,
+    title = '',
+    author = '',
+    image = '',
+    document,
+    sourceType,
+    resources = [],
+    overwrite = false,
+  } = data;
+  const computedFingerprint = fingerprint || (await getBookFingerprint({ author, document, sourceType, title }));
+  const id = preferredId || computedFingerprint;
 
   const existing = await getBookById<BookInfo>(id);
-  if (!existing.error && existing.data) {
-    const { id: existingId, title: existingTitle, author: existingAuthor, image: existingImage, sourceType: existingSourceType, createTime, modifyTime } = existing.data;
+  if (!overwrite && !existing.error && existing.data) {
+    const {
+      id: existingId,
+      title: existingTitle,
+      author: existingAuthor,
+      image: existingImage,
+      sourceType: existingSourceType,
+      createTime,
+      modifyTime,
+    } = existing.data;
     return successResult(
       {
         id: existingId,
@@ -156,6 +182,7 @@ export const addBook = async (data: {
         author: existingAuthor,
         image: existingImage,
         sourceType: existingSourceType,
+        fingerprint: existing.data.fingerprint,
         createTime,
         modifyTime,
         document: { version: 1 } as ReaderBookDocument,
@@ -172,9 +199,19 @@ export const addBook = async (data: {
     image,
     document,
     sourceType,
-    createTime: now,
+    fingerprint: computedFingerprint,
+    createTime: overwrite && !existing.error && existing.data?.createTime ? existing.data.createTime : now,
     modifyTime: now,
   };
+
+  if (overwrite) {
+    releaseBookResourceUrls(id);
+    try {
+      await deleteBookResources(id);
+    } catch (error) {
+      console.error('Failed to delete old book resources:', getErrorMessage(error));
+    }
+  }
 
   if (resources.length > 0) {
     try {
@@ -184,12 +221,20 @@ export const addBook = async (data: {
     }
   }
 
-  const addResult = await performWorkerOperation<BookInfo>('add', { bookInfo });
+  const addResult = await performWorkerOperation<BookInfo>(overwrite ? 'put' : 'add', { bookInfo });
   if (addResult.error) {
     // Race condition: another import added the same book between our get and add.
     const conflict = await getBookById<BookInfo>(id);
     if (!conflict.error && conflict.data) {
-      const { id: conflictId, title: conflictTitle, author: conflictAuthor, image: conflictImage, sourceType: conflictSourceType, createTime, modifyTime } = conflict.data;
+      const {
+        id: conflictId,
+        title: conflictTitle,
+        author: conflictAuthor,
+        image: conflictImage,
+        sourceType: conflictSourceType,
+        createTime,
+        modifyTime,
+      } = conflict.data;
       return successResult(
         {
           id: conflictId,
@@ -197,6 +242,7 @@ export const addBook = async (data: {
           author: conflictAuthor,
           image: conflictImage,
           sourceType: conflictSourceType,
+          fingerprint: conflict.data.fingerprint,
           createTime,
           modifyTime,
           document: { version: 1 } as ReaderBookDocument,
@@ -206,7 +252,7 @@ export const addBook = async (data: {
     }
     return addResult;
   }
-  // The worker returns a metadata-only projection on success — relay it.
+  // The worker returns a metadata-only projection on success; relay it.
   return addResult;
 };
 

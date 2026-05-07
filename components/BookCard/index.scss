@@ -12,6 +12,23 @@
 //   animation: none;
 //   animation-duration: 0.5s;
 // }
+
+.book-cover-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  border-radius: 6px;
+  background: linear-gradient(135deg, rgba(27, 136, 238, 0.12), rgba(27, 136, 238, 0.02)), var(--front-bg-color-2);
+  color: var(--text-color-2);
+  font-size: 28px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.book-cover-fallback span {
+  transform: translateY(-1px);
+}
 // ::view-transition-new(book-info) {
 //   mix-blend-mode: normal;
 //   animation: clip 0.5s ease-in;

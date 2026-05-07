@@ -822,6 +822,8 @@ interface ReaderScrollContentProps {
   onNavigateTitle: (titleId: number) => void;
   progressLocator?: ReaderLocator;
   targetBlockId?: string;
+  targetBlockPageOffset?: number;
+  targetPage?: number;
   targetBlockRatio?: number;
 }
 
@@ -1525,10 +1527,20 @@ const buildPageTitleId = (pageCount: number, titleIdPage: Record<string, number>
   });
 };
 
+const getPagedSpreadStartPage = (page: number, visiblePages: number): number => {
+  const safePage = Math.max(0, Math.floor(Number.isFinite(page) ? page : 0));
+  const safeVisiblePages = Math.max(1, Math.floor(Number.isFinite(visiblePages) ? visiblePages : 1));
+  if (safeVisiblePages <= 1) return safePage;
+  return safePage - (safePage % safeVisiblePages);
+};
+
 const areChapterImagesReadyForPagination = (flow: HTMLElement, expectedImageCount: number): boolean => {
   if (expectedImageCount <= 0) return true;
   const images = Array.from(flow.querySelectorAll<HTMLImageElement>('.reader-content-image img'));
-  if (images.length < expectedImageCount) return false;
+  const fallbackImages = Array.from(
+    flow.querySelectorAll<HTMLElement>('.reader-content-image-fallback[data-reader-image-settled="true"]'),
+  );
+  if (images.length + fallbackImages.length < expectedImageCount) return false;
   return images.every(
     (image) =>
       image.complete &&
@@ -1707,9 +1719,18 @@ const ReaderImageBlock = ({
 }): React.JSX.Element => {
   const resolvedSrc = useResolvedBookImage(bookId, block.src);
   const imageRef = useRef<HTMLImageElement>(null);
+  const [imageFailed, setImageFailed] = useState(false);
 
   useEffect(() => {
-    if (!onImageSettled || !resolvedSrc) return;
+    setImageFailed(false);
+  }, [block.src, bookId]);
+
+  useEffect(() => {
+    if (!onImageSettled) return;
+    if (!resolvedSrc || imageFailed) {
+      onImageSettled(block.id);
+      return;
+    }
 
     const frame = window.requestAnimationFrame(() => {
       if (imageRef.current?.complete) {
@@ -1717,12 +1738,15 @@ const ReaderImageBlock = ({
       }
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [block.id, onImageSettled, resolvedSrc]);
+  }, [block.id, imageFailed, onImageSettled, resolvedSrc]);
 
   const handleImageSettled = useCallback(
     (event?: React.SyntheticEvent<HTMLImageElement>) => {
       if (event?.currentTarget) {
         event.currentTarget.dataset.readerImageSettled = 'true';
+      }
+      if (event?.type === 'error') {
+        setImageFailed(true);
       }
       onImageSettled?.(block.id);
     },
@@ -1736,7 +1760,7 @@ const ReaderImageBlock = ({
       data-reader-title-id={block.titleId}
       key={block.id}
     >
-      {resolvedSrc && (
+      {resolvedSrc && !imageFailed ? (
         <img
           alt={block.alt || ''}
           ref={imageRef}
@@ -1744,6 +1768,10 @@ const ReaderImageBlock = ({
           onError={handleImageSettled}
           onLoad={handleImageSettled}
         />
+      ) : (
+        <div className="reader-content-image-fallback" data-reader-image-settled="true">
+          图片加载失败
+        </div>
       )}
     </figure>
   );
@@ -1880,13 +1908,17 @@ const hasCompleteChapterStartPages = (
 };
 
 const createScrollTargetLocator = ({
+  blockPageOffset,
   blockId,
   bookId,
+  page,
   ratio,
   textSyntaxTree,
 }: {
+  blockPageOffset?: number;
   blockId: string;
   bookId?: string;
+  page?: number;
   ratio: number;
   textSyntaxTree: TextSyntaxTree;
 }): ReaderLocator | undefined => {
@@ -1903,7 +1935,22 @@ const createScrollTargetLocator = ({
         ? 0
         : (textSyntaxTree.titleIdPage[block.titleId] ?? 0)
       : startPage + Math.round(safeRatio * Math.max((endPage ?? startPage) - startPage, 0));
-  const page = Math.min(Math.max(rawPage, 0), Math.max(textSyntaxTree.totalPage || 0, 0));
+  const safePage = Math.min(
+    Math.max(typeof page === 'number' && Number.isFinite(page) ? page : rawPage, 0),
+    Math.max(textSyntaxTree.totalPage || 0, 0),
+  );
+  const resolvedBlockPageOffset =
+    startPage === undefined
+      ? undefined
+      : Math.min(
+          Math.max(
+            typeof blockPageOffset === 'number' && Number.isFinite(blockPageOffset)
+              ? blockPageOffset
+              : safePage - startPage,
+            0,
+          ),
+          Math.max((endPage ?? startPage) - startPage, 0),
+        );
   const blockLength = Math.max(block.end - block.start, 1);
   const globalProgress =
     textSyntaxTree.rawText.length > 0
@@ -1912,10 +1959,11 @@ const createScrollTargetLocator = ({
 
   return {
     blockId: block.id,
+    blockPageOffset: resolvedBlockPageOffset,
     blockScrollRatio: safeRatio,
     bookId,
     globalProgress,
-    page,
+    page: safePage,
     readingMode: 'scroll',
     textAfter: block.text.slice(-80),
     textBefore: block.text.slice(0, 80),
@@ -2080,6 +2128,8 @@ const ReaderScrollContent = ({
   onNavigateTitle,
   progressLocator,
   targetBlockId,
+  targetBlockPageOffset,
+  targetPage,
   targetBlockRatio,
 }: ReaderScrollContentProps): React.JSX.Element => {
   const contentRef = useRef<HTMLElement>(null);
@@ -2104,6 +2154,7 @@ const ReaderScrollContent = ({
   } = useReaderAnnotationActions({ bookId, clearSelection, selectionMenuState });
   const copyToastTimerRef = useRef<number | null>(null);
   const consumedNavigationRevisionRef = useRef(0);
+  const pinnedScrollTargetLocatorRef = useRef<ReaderLocator | null>(null);
   const [copyToastVisible, setCopyToastVisible] = useState(false);
   const readerSearchHighlight = getReaderSearchHighlight();
   const searchKeyword = readerSearchHighlight.hasResult ? readerSearchHighlight.keyword : '';
@@ -2172,7 +2223,26 @@ const ReaderScrollContent = ({
         textSyntaxTree,
       });
       if (locator) {
-        saveReaderProgress(locator);
+        const pinnedLocator = pinnedScrollTargetLocatorRef.current;
+        const shouldPreservePinnedPage =
+          pinnedLocator &&
+          pinnedLocator.blockId === locator.blockId &&
+          pinnedLocator.titleId === locator.titleId &&
+          Math.abs((pinnedLocator.blockScrollRatio ?? 0) - (locator.blockScrollRatio ?? 0)) <= 0.08 &&
+          Number.isFinite(pinnedLocator.page);
+        saveReaderProgress(
+          shouldPreservePinnedPage
+            ? {
+                ...locator,
+                blockPageOffset: pinnedLocator.blockPageOffset,
+                blockScrollRatio: pinnedLocator.blockScrollRatio ?? locator.blockScrollRatio,
+                globalProgress: pinnedLocator.globalProgress ?? locator.globalProgress,
+                page: pinnedLocator.page,
+                textAfter: pinnedLocator.textAfter ?? locator.textAfter,
+                textBefore: pinnedLocator.textBefore ?? locator.textBefore,
+              }
+            : locator,
+        );
       }
     },
     [bookId, textSyntaxTree],
@@ -2201,14 +2271,17 @@ const ReaderScrollContent = ({
   );
 
   const saveScrollTargetLocator = useCallback(
-    (blockId: string, ratio: number) => {
+    (blockId: string, ratio: number, page?: number, blockPageOffset?: number) => {
       const locator = createScrollTargetLocator({
+        blockPageOffset,
         blockId,
         bookId,
+        page,
         ratio,
         textSyntaxTree,
       });
       if (locator) {
+        pinnedScrollTargetLocatorRef.current = locator;
         saveReaderProgress(locator);
       }
     },
@@ -2220,8 +2293,8 @@ const ReaderScrollContent = ({
       if (consumedNavigationRevisionRef.current !== navigationRevision) {
         consumedNavigationRevisionRef.current = navigationRevision;
         const ratio = targetBlockRatio ?? 0;
-        restoreScrollBlock(targetBlockId, ratio, 'center', () => {
-          saveScrollTargetLocator(targetBlockId, ratio);
+        restoreScrollBlock(targetBlockId, ratio, 'anchor', () => {
+          saveScrollTargetLocator(targetBlockId, ratio, targetPage, targetBlockPageOffset);
           if (getReaderNavigationTarget().revision === navigationRevision) {
             setReaderNavigationTarget({ revision: 0 });
           }
@@ -2245,9 +2318,30 @@ const ReaderScrollContent = ({
     progressLocator?.updatedAt,
     restoreScrollBlock,
     saveScrollTargetLocator,
+    targetBlockPageOffset,
     targetBlockId,
+    targetPage,
     targetBlockRatio,
   ]);
+
+  useEffect(() => {
+    const clearPinnedLocator = () => {
+      pinnedScrollTargetLocatorRef.current = null;
+    };
+    const clearPinnedLocatorByKey = (event: KeyboardEvent) => {
+      if (['ArrowDown', 'ArrowUp', 'End', 'Home', 'PageDown', 'PageUp', ' '].includes(event.key)) {
+        clearPinnedLocator();
+      }
+    };
+    window.addEventListener('wheel', clearPinnedLocator, { passive: true });
+    window.addEventListener('touchmove', clearPinnedLocator, { passive: true });
+    window.addEventListener('keydown', clearPinnedLocatorByKey);
+    return () => {
+      window.removeEventListener('wheel', clearPinnedLocator);
+      window.removeEventListener('touchmove', clearPinnedLocator);
+      window.removeEventListener('keydown', clearPinnedLocatorByKey);
+    };
+  }, []);
 
   useEffect(() => {
     if (!bookId) return;
@@ -2405,7 +2499,12 @@ const ReaderPagedContent = ({
   }, [annotations]);
   const currentBookmark = useMemo(() => {
     if (visiblePages !== 2) return undefined;
-    return getReaderBookmarkForPage(bookId, pageNum);
+    const spreadStart = getPagedSpreadStartPage(pageNum, visiblePages);
+    for (let offset = 0; offset < visiblePages; offset += 1) {
+      const bookmark = getReaderBookmarkForPage(bookId, spreadStart + offset);
+      if (bookmark) return bookmark;
+    }
+    return undefined;
   }, [annotations, bookId, pageNum, visiblePages]);
 
   useEffect(() => {
@@ -2446,13 +2545,15 @@ const ReaderPagedContent = ({
 
   const addCurrentPageBookmark = useCallback(() => {
     if (!bookId || visiblePages !== 2) return;
-    const bookmark = getReaderBookmarkForPage(bookId, pageNum);
-    if (bookmark) return;
+    const spreadStart = getPagedSpreadStartPage(pageNum, visiblePages);
+    for (let offset = 0; offset < visiblePages; offset += 1) {
+      if (getReaderBookmarkForPage(bookId, spreadStart + offset)) return;
+    }
 
     const draft = createPageBookmarkDraft({
       flow: flowRef.current,
       layout,
-      page: pageNum,
+      page: spreadStart,
       viewport: viewportRef.current,
     });
     if (draft) {
@@ -2462,13 +2563,12 @@ const ReaderPagedContent = ({
 
   const togglePageBookmark = useCallback(() => {
     if (!bookId || visiblePages !== 2) return;
-    const bookmark = getReaderBookmarkForPage(bookId, pageNum);
-    if (bookmark) {
-      deleteReaderAnnotation(bookId, bookmark.id);
+    if (currentBookmark) {
+      deleteReaderAnnotation(bookId, currentBookmark.id);
       return;
     }
     addCurrentPageBookmark();
-  }, [addCurrentPageBookmark, bookId, pageNum, visiblePages]);
+  }, [addCurrentPageBookmark, bookId, currentBookmark, visiblePages]);
 
   useEffect(() => {
     syncHook.tap(EVENT_NAME.ADD_READER_PAGE_BOOKMARK, addCurrentPageBookmark);
@@ -2555,6 +2655,13 @@ const ReaderPagedContent = ({
     ? Math.min(Math.max(0, currentLocalPage), Math.max(0, currentChapterPagination.chapterPageCount - 1))
     : Math.max(0, currentLocalPage);
   const chapterStartsComplete = hasCompleteChapterStartPages(titleIdSequence, chapterStartPages);
+
+  useLayoutEffect(() => {
+    const spreadStart = getPagedSpreadStartPage(pageNum, visiblePages);
+    if (spreadStart !== pageNum) {
+      setPageNum(spreadStart);
+    }
+  }, [pageNum, visiblePages]);
 
   const getCurrentLocator = useCallback((): ReaderLocator | undefined => {
     if (!bookId) return undefined;
@@ -2828,7 +2935,7 @@ const ReaderPagedContent = ({
 
     if (!chapterPaginations.has(currentTitleId)) return;
 
-    const targetPage = resolveReaderLocatorPage(locator, getTextSyntaxTree());
+    const targetPage = getPagedSpreadStartPage(resolveReaderLocatorPage(locator, getTextSyntaxTree()), visiblePages);
     pendingLocatorRef.current = null;
     if (getPageNum() !== targetPage) {
       setPageNum(targetPage);
@@ -2872,15 +2979,29 @@ const ReaderPagedContent = ({
       block && typeof navigationTarget.matchStart === 'number' && Number.isFinite(navigationTarget.matchStart)
         ? Math.min(Math.max(navigationTarget.matchStart / Math.max(block.text.length, 1), 0), 1)
         : undefined;
+    const blockStartPage = block ? textSyntaxTree.blockIdPage[block.id] : undefined;
+    const blockEndPage = block ? (textSyntaxTree.blockIdPageEnd[block.id] ?? blockStartPage) : undefined;
+    const blockPageOffset =
+      typeof navigationTarget.blockPageOffset === 'number' && Number.isFinite(navigationTarget.blockPageOffset)
+        ? navigationTarget.blockPageOffset
+        : typeof navigationTarget.page === 'number' &&
+            Number.isFinite(navigationTarget.page) &&
+            blockStartPage !== undefined
+          ? Math.min(
+              Math.max(navigationTarget.page - blockStartPage, 0),
+              Math.max((blockEndPage ?? blockStartPage) - blockStartPage, 0),
+            )
+          : undefined;
     pendingLocatorRef.current = {
       bookId: bookId ?? '',
       page: navigationTarget.page ?? 0,
       blockId: navigationTarget.blockId,
+      blockPageOffset,
       titleId: navigationTarget.titleId,
       blockScrollRatio: ratio,
       updatedAt: Date.now(),
     };
-  }, [navigationTarget, bookId, blocks]);
+  }, [navigationTarget, bookId, blocks, textSyntaxTree.blockIdPage, textSyntaxTree.blockIdPageEnd]);
 
   // totalPage 收缩时把越界的 pageNum 拉回范围内
   useEffect(() => {
@@ -3060,8 +3181,9 @@ const ReaderPagedContent = ({
 const pre = (num: number = 1) => {
   const pageNum: number = getPageNum();
   if (pageNum === 0) return;
+  const currentSpreadStart = getPagedSpreadStartPage(pageNum, num);
   runPageTurn(getStoredReaderPageTurnEffect(), () => {
-    setPageNum(Math.max(pageNum - num, 0));
+    setPageNum(Math.max(currentSpreadStart - num, 0));
   });
 };
 
@@ -3069,8 +3191,9 @@ const next = (num: number = 1) => {
   const pageNum: number = getPageNum();
   const textSyntaxTree: TextSyntaxTree = getTextSyntaxTree();
   const size: number = textSyntaxTree?.totalPage || 0;
+  const currentSpreadStart = getPagedSpreadStartPage(pageNum, num);
   runPageTurn(getStoredReaderPageTurnEffect(), () => {
-    setPageNum(Math.min(pageNum + num, size));
+    setPageNum(Math.min(currentSpreadStart + num, size));
   });
 };
 
@@ -3275,6 +3398,32 @@ export const DesktopBookDetail = (): React.JSX.Element => {
     Number.isFinite(readerNavigationTarget.matchStart)
       ? Math.min(Math.max(readerNavigationTarget.matchStart / Math.max(scrollNavigationBlock.text.length, 1), 0), 1)
       : undefined;
+  const scrollTargetBlockStartPage = scrollNavigationBlock
+    ? textSyntaxTree.blockIdPage[scrollNavigationBlock.id]
+    : undefined;
+  const scrollTargetBlockEndPage = scrollNavigationBlock
+    ? (textSyntaxTree.blockIdPageEnd[scrollNavigationBlock.id] ?? scrollTargetBlockStartPage)
+    : undefined;
+  const scrollTargetBlockPageOffset =
+    hasActiveScrollNavigation &&
+    typeof readerNavigationTarget.blockPageOffset === 'number' &&
+    Number.isFinite(readerNavigationTarget.blockPageOffset)
+      ? readerNavigationTarget.blockPageOffset
+      : hasActiveScrollNavigation &&
+          typeof readerNavigationTarget.page === 'number' &&
+          Number.isFinite(readerNavigationTarget.page) &&
+          scrollTargetBlockStartPage !== undefined
+        ? Math.min(
+            Math.max(readerNavigationTarget.page - scrollTargetBlockStartPage, 0),
+            Math.max((scrollTargetBlockEndPage ?? scrollTargetBlockStartPage) - scrollTargetBlockStartPage, 0),
+          )
+        : undefined;
+  const scrollTargetPage =
+    hasActiveScrollNavigation &&
+    typeof readerNavigationTarget.page === 'number' &&
+    Number.isFinite(readerNavigationTarget.page)
+      ? readerNavigationTarget.page
+      : undefined;
 
   if (!isReaderReady) {
     return (
@@ -3323,6 +3472,8 @@ export const DesktopBookDetail = (): React.JSX.Element => {
               onNavigateTitle={navigateScrollTitle}
               progressLocator={scrollProgressLocator}
               targetBlockId={scrollTargetBlockId}
+              targetBlockPageOffset={scrollTargetBlockPageOffset}
+              targetPage={scrollTargetPage}
               targetBlockRatio={scrollTargetBlockRatio}
               textSyntaxTree={textSyntaxTree}
               titleId={scrollTitleId}

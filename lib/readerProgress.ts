@@ -291,6 +291,15 @@ export const getReaderProgress = (bookId?: string | null): ReaderLocator | undef
   return readProgressMap()[bookId];
 };
 
+export const deleteReaderProgress = (bookId?: string | null): void => {
+  if (!bookId) return;
+  const map = readProgressMap();
+  if (!(bookId in map)) return;
+  delete map[bookId];
+  writeProgressMap(map);
+  syncHook.call(EVENT_NAME.SET_READER_PROGRESS);
+};
+
 export const saveReaderProgress = (locator: ReaderLocator): void => {
   if (!locator.bookId) return;
   const map = readProgressMap();

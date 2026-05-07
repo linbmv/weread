@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect } from 'react';
 import { Routes } from './router/index';
 import { closeDB, initDB, resumeDB } from './store';
+import { GlobalFallback } from '@/components/GlobalFallback';
 import 'ranui/button';
 import './styles/view-transition.scss';
 import '@khmyznikov/pwa-install';
@@ -38,6 +39,7 @@ export const App = (): React.JSX.Element => {
   return (
     <div className="w-full h-full">
       <Routes />
+      <GlobalFallback />
     </div>
   );
 };

@@ -122,6 +122,15 @@ export const getReaderAnnotationsByBlock = (bookId: string | undefined, blockId:
   return getReaderAnnotations(bookId).filter((annotation) => annotation.blockId === blockId);
 };
 
+export const deleteReaderAnnotationsForBook = (bookId?: string | null): void => {
+  if (!bookId) return;
+  const map = readAnnotationMap();
+  if (!map[bookId]) return;
+  delete map[bookId];
+  writeAnnotationMap(map);
+  emitAnnotationChange();
+};
+
 export const getReaderBookmarkForPage = (
   bookId: string | undefined | null,
   page: number,

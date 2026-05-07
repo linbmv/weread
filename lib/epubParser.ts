@@ -24,7 +24,18 @@ const BLOCK_TAGS = new Set(['blockquote', 'br', 'h1', 'h2', 'h3', 'h4', 'h5', 'h
 
 const INLINE_TAGS = new Set(['em', 'span', 'strong']);
 
-const DANGEROUS_TAGS = new Set(['audio', 'canvas', 'embed', 'iframe', 'math', 'object', 'script', 'style', 'svg', 'video']);
+const DANGEROUS_TAGS = new Set([
+  'audio',
+  'canvas',
+  'embed',
+  'iframe',
+  'math',
+  'object',
+  'script',
+  'style',
+  'svg',
+  'video',
+]);
 
 const normalizePath = (value: string): string => {
   const parts: string[] = [];
@@ -162,8 +173,7 @@ const getTocTitleMap = (
 
   const tocId = opf.querySelector('spine')?.getAttribute('toc') || '';
   const ncxItem =
-    manifest.get(tocId) ||
-    Array.from(manifest.values()).find((item) => item.mediaType === 'application/x-dtbncx+xml');
+    manifest.get(tocId) || Array.from(manifest.values()).find((item) => item.mediaType === 'application/x-dtbncx+xml');
   if (ncxItem) {
     const ncxPath = resolvePath(opfBase, ncxItem.href);
     const ncxBytes = files.get(ncxPath);
@@ -177,6 +187,12 @@ interface SanitizeContext {
   resourceKeyByPath: Map<string, string>;
   chapterBase: string;
 }
+
+const throwIfAborted = (signal?: AbortSignal): void => {
+  if (!signal?.aborted) return;
+  if (signal.reason instanceof Error) throw signal.reason;
+  throw new Error('EPUB parse aborted.');
+};
 
 const sanitizeElement = (element: Element, context: SanitizeContext): Node | undefined => {
   const tagName = element.tagName.toLowerCase();
@@ -229,7 +245,11 @@ const getChapterText = (body: HTMLElement): string => {
 };
 
 const getFallbackChapterTitle = (path: string, order: number): string => {
-  const fileName = path.split('/').pop()?.replace(/\.[^.]+$/u, '') || '';
+  const fileName =
+    path
+      .split('/')
+      .pop()
+      ?.replace(/\.[^.]+$/u, '') || '';
   return fileName || `Chapter ${order + 1}`;
 };
 
@@ -237,7 +257,10 @@ const buildResourceMap = (
   manifest: Map<string, ManifestItem>,
   files: Map<string, Uint8Array>,
   opfBase: string,
-): { resourceKeyByPath: Map<string, string>; resourceFiles: { path: string; mediaType: string; bytes: Uint8Array }[] } => {
+): {
+  resourceKeyByPath: Map<string, string>;
+  resourceFiles: { path: string; mediaType: string; bytes: Uint8Array }[];
+} => {
   const resourceKeyByPath = new Map<string, string>();
   const resourceFiles: { path: string; mediaType: string; bytes: Uint8Array }[] = [];
   Array.from(manifest.values()).forEach((item) => {
@@ -279,19 +302,26 @@ const toResourceRecords = (
 export const parseEpubToReaderDocument = async (
   content: Uint8Array<ArrayBuffer> | ArrayBuffer,
   fileName: string,
+  options: {
+    signal?: AbortSignal;
+  } = {},
 ): Promise<EpubParseResult> => {
   if (typeof DOMParser === 'undefined') {
     throw new Error('This browser does not support EPUB XML parsing.');
   }
+
+  throwIfAborted(options.signal);
 
   // Hand the raw EPUB bytes to a worker (transferable, zero-copy) and get back
   // a flat list of inflated entries with their underlying ArrayBuffers
   // transferred back. This keeps DEFLATE off the main thread and avoids the
   // 4x byte copies the previous implementation incurred.
   const buffer = content instanceof ArrayBuffer ? content : content.buffer;
-  const entries = await unzipEpubInWorker(buffer);
+  const entries = await unzipEpubInWorker(buffer, { signal: options.signal });
+  throwIfAborted(options.signal);
   const files = new Map<string, Uint8Array>();
-  for (const entry of entries) {
+  for (const [index, entry] of entries.entries()) {
+    if (index % 50 === 0) throwIfAborted(options.signal);
     files.set(entry.path, new Uint8Array(entry.bytes));
   }
   // Allow the entries list to be GC'd; underlying ArrayBuffers are kept alive
@@ -299,6 +329,7 @@ export const parseEpubToReaderDocument = async (
   entries.length = 0;
 
   const opfPath = getContainerOpfPath(files);
+  throwIfAborted(options.signal);
   const opfBytes = files.get(opfPath);
   if (!opfBytes) throw new Error('Invalid EPUB: OPF file is missing.');
 
@@ -320,10 +351,12 @@ export const parseEpubToReaderDocument = async (
   // DOMParser-ing chapter HTML.
   const resources = resourceFiles.length ? toResourceRecords('', resourceFiles, files) : [];
   resourceFiles.length = 0;
+  throwIfAborted(options.signal);
 
   const chapters: ReaderDocumentChapter[] = [];
 
   spineItems.forEach((item, spineIndex) => {
+    if (spineIndex % 5 === 0) throwIfAborted(options.signal);
     const chapterPath = resolvePath(opfBase, item.href);
     const chapterBytes = files.get(chapterPath);
     if (!chapterBytes) return;
@@ -352,6 +385,7 @@ export const parseEpubToReaderDocument = async (
     });
   });
 
+  throwIfAborted(options.signal);
   files.clear();
 
   const rawText = chapters.map((chapter) => `${chapter.title}\n${chapter.text}`).join('\n\n');

@@ -11,6 +11,7 @@ export interface ReaderSearchHighlight {
 
 export interface ReaderNavigationTarget {
   blockId?: string;
+  blockPageOffset?: number;
   matchStart?: number;
   page?: number;
   revision: number;

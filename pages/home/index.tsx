@@ -1,16 +1,28 @@
 import { type KeyboardEvent, useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { debounce } from 'ranuts/utils';
-import { BookCard } from '@/components/BookCard';
-import { addBook, getAllBooks, searchBooksByAuthor, searchBooksByContent, searchBooksByTitle } from '@/store/books';
+import { BookCard, BookCoverFallback } from '@/components/BookCard';
+import {
+  addBook,
+  getAllBooks,
+  getBookFingerprint,
+  searchBooksByAuthor,
+  searchBooksByContent,
+  searchBooksByTitle,
+} from '@/store/books';
 import { trim } from '@/lib/transformText';
 import { resumeDB } from '@/store';
 import { startSpaViewTransition } from '@/lib/navigation';
 import { importBookFile, isSupportedBookFile } from '@/lib/bookImporter';
 import type { BookInfo, SearchResult } from '@/store/books';
+import type { ImportedBookData } from '@/lib/bookImporter';
 import { ROUTE_PATH } from '@/router';
 import { DEVICE_ENUM, useCheckDevice } from '@/lib/hooks';
 import { useResolvedBookImage } from '@/lib/useResolvedBookImage';
+import { clearReaderBookData } from '@/lib/readerBookData';
+import { getReaderProgress } from '@/lib/readerProgress';
+import { getErrorMessage } from '@/lib/utils';
+import { showGlobalFallback } from '@/lib/globalFallback';
 import { Loading } from '@/components/Loading';
 import {
   OcticonChevronRight as HomeArrowRightIcon,
@@ -19,6 +31,7 @@ import {
 } from '@/components/Octicon';
 import { t } from '@/locales';
 import 'ranui/input';
+import './index.scss';
 
 const DESKTOP_INPUT_STYLE = {
   '--ran-input-border-radius': '2rem',
@@ -39,49 +52,242 @@ const MOBILE_INPUT_STYLE = {
 
 const MAX_BOOK_LOAD_RETRIES = 3;
 
-const appendImportedBooks = (bookList: BookInfo[], importedBooks: BookInfo[]): BookInfo[] => {
-  if (importedBooks.length === 0) return bookList;
-  const bookMap = new Map(bookList.map((book) => [book.id, book]));
-  importedBooks.forEach((book) => {
-    bookMap.set(book.id, book);
-  });
-  return Array.from(bookMap.values());
-};
+const BOOK_IMPORT_TIMEOUT_MS = 180_000;
 
-const addBookByFile = (): Promise<BookInfo[]> => {
+type ImportConflictType = 'same-book' | 'same-title';
+
+type ImportConflictAction = 'cancel' | 'keepBoth' | 'overwrite';
+
+interface ImportConflictState {
+  fileName: string;
+  fileSizeLabel: string;
+  lastReadLabel: string;
+  showApplyToRemaining: boolean;
+  sourceTypeLabel: string;
+  title: string;
+  type: ImportConflictType;
+}
+
+interface ImportConflictDecision {
+  action: ImportConflictAction;
+  applyToRemaining: boolean;
+}
+
+interface ImportConflictDialogProps {
+  state: ImportConflictState | null;
+  onCancel: (applyToRemaining: boolean) => void;
+  onConfirm: (action: Exclude<ImportConflictAction, 'cancel'>, applyToRemaining: boolean) => void;
+}
+
+const chooseBookFiles = (): Promise<File[]> => {
   return new Promise((resolve) => {
     const uploadFile = document.createElement('input');
     uploadFile.setAttribute('type', 'file');
     uploadFile.setAttribute('accept', '.txt,.epub,text/plain,application/epub+zip');
     uploadFile.setAttribute('multiple', 'multiple');
-    uploadFile.click();
     uploadFile.onchange = () => {
-      const { files } = uploadFile;
-      if (!files || files.length === 0) {
-        resolve([]);
-        return;
-      }
-      const supportedFiles = Array.from(files).filter(isSupportedBookFile);
-      if (supportedFiles.length === 0) {
-        resolve([]);
-        return;
-      }
-      Promise.allSettled(
-        supportedFiles.map(async (file) => {
-          const book = await importBookFile(file);
-          const res = await addBook(book);
-          if (!res.error && res.data) return res.data as BookInfo;
-          throw new Error(res.message || `Failed to add book: ${file.name}`);
-        }),
-      ).then((results) => {
-        resolve(
-          results
-            .filter((result): result is PromiseFulfilledResult<BookInfo> => result.status === 'fulfilled')
-            .map((result) => result.value),
-        );
-      });
+      resolve(uploadFile.files ? Array.from(uploadFile.files) : []);
+      uploadFile.remove();
     };
+    uploadFile.click();
   });
+};
+
+const withTimeout = <T,>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  message: string,
+  onTimeout?: () => void,
+): Promise<T> => {
+  return new Promise<T>((resolve, reject) => {
+    const timer = window.setTimeout(() => {
+      onTimeout?.();
+      reject(new Error(message));
+    }, timeoutMs);
+    promise.then(
+      (value) => {
+        window.clearTimeout(timer);
+        resolve(value);
+      },
+      (error: unknown) => {
+        window.clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+};
+
+const importBookFileWithFallback = (file: File): Promise<ImportedBookData> => {
+  const controller = new AbortController();
+  const timeoutMessage = `《${file.name}》解析超时，已中断导入`;
+  return withTimeout(importBookFile(file, { signal: controller.signal }), BOOK_IMPORT_TIMEOUT_MS, timeoutMessage, () =>
+    controller.abort(new Error(timeoutMessage)),
+  );
+};
+
+const getBookIdentity = (book: Pick<BookInfo, 'fingerprint' | 'id'>): string => book.fingerprint || book.id;
+
+const normalizeBookTitle = (title: string): string => title.trim() || '未命名书籍';
+
+const resolveUniqueBookTitle = (title: string, existingBooks: BookInfo[], currentIdentity: string): string => {
+  const baseTitle = title.trim() || '未命名书籍';
+  const existingTitles = new Set(
+    existingBooks.filter((book) => getBookIdentity(book) !== currentIdentity).map((book) => book.title),
+  );
+  if (!existingTitles.has(baseTitle)) return baseTitle;
+
+  let index = 2;
+  let nextTitle = `${baseTitle}(${index})`;
+  while (existingTitles.has(nextTitle)) {
+    index += 1;
+    nextTitle = `${baseTitle}(${index})`;
+  }
+  return nextTitle;
+};
+
+const formatBookFileSize = (size: number): string => {
+  if (!Number.isFinite(size) || size <= 0) return '0KB';
+  const mb = size / 1024 / 1024;
+  if (mb >= 1) {
+    const value = mb >= 10 ? Math.round(mb) : Math.round(mb * 10) / 10;
+    return `${value}MB`;
+  }
+  const kb = Math.max(1, Math.round(size / 1024));
+  return `${kb}KB`;
+};
+
+const formatImportDate = (timestamp?: number): string => {
+  if (!timestamp || !Number.isFinite(timestamp)) return '暂无';
+  const date = new Date(timestamp);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const formatProgressPercent = (value?: number): number => {
+  if (!Number.isFinite(value)) return 0;
+  return Math.min(Math.max(Math.floor(value || 0), 0), 100);
+};
+
+const createImportConflictState = ({
+  existingBook,
+  file,
+  imported,
+  showApplyToRemaining,
+  type,
+}: {
+  existingBook: BookInfo;
+  file: File;
+  imported: ImportedBookData;
+  showApplyToRemaining: boolean;
+  type: ImportConflictType;
+}): ImportConflictState => {
+  const progress = getReaderProgress(existingBook.id);
+  const readPercent = formatProgressPercent(progress?.readPercent);
+  const lastReadDateLabel = `上次阅读时间 ${formatImportDate(progress?.updatedAt)}`;
+  const lastReadLabel = readPercent > 0 ? `${lastReadDateLabel} (已阅读 ${readPercent}%)` : lastReadDateLabel;
+  return {
+    fileName: file.name,
+    fileSizeLabel: formatBookFileSize(file.size),
+    lastReadLabel,
+    showApplyToRemaining,
+    sourceTypeLabel: imported.sourceType.toUpperCase(),
+    title: existingBook.title || normalizeBookTitle(imported.title),
+    type,
+  };
+};
+
+const upsertBookListItem = (books: BookInfo[], book: BookInfo): BookInfo[] => {
+  const index = books.findIndex((item) => item.id === book.id);
+  if (index === -1) return [...books, book];
+  const next = [...books];
+  next[index] = book;
+  return next;
+};
+
+const getImportFailureMessage = (file: File, error: unknown): string => {
+  const message = getErrorMessage(error, '导入失败');
+  if (/timeout|timed out|超时/iu.test(message)) {
+    return /^EPUB /iu.test(message) ? `《${file.name}》解析超时，已中断导入` : message;
+  }
+  if (/\.epub$/iu.test(file.name)) return `《${file.name}》EPUB 解析失败，已跳过该书`;
+  return `《${file.name}》导入失败，已跳过该书`;
+};
+
+const ImportConflictDialog = ({ state, onCancel, onConfirm }: ImportConflictDialogProps): React.JSX.Element | null => {
+  const [applyToRemaining, setApplyToRemaining] = useState(false);
+  const [keepBoth, setKeepBoth] = useState(false);
+
+  useEffect(() => {
+    if (state) {
+      setApplyToRemaining(false);
+      setKeepBoth(false);
+    }
+  }, [state]);
+
+  if (!state) return null;
+
+  const canKeepBoth = state.type === 'same-title';
+  const isCancelDisabled = canKeepBoth && keepBoth;
+  const title = state.type === 'same-book' ? '检测到相同书籍' : '检测到重名书籍';
+
+  return (
+    <div className="home-import-dialog-layer" role="presentation">
+      <div className="home-import-dialog" role="dialog" aria-modal="true" aria-labelledby="home-import-dialog-title">
+        <div className="home-import-dialog-title" id="home-import-dialog-title">
+          {title}
+        </div>
+        <div className="home-import-dialog-content">
+          <div>{state.title} 已经在书架中：</div>
+          <div className="home-import-dialog-info">
+            <div className="home-import-dialog-file">{state.fileName}</div>
+            <div className="home-import-dialog-meta">
+              {state.sourceTypeLabel} | {state.fileSizeLabel} | {state.lastReadLabel}
+            </div>
+          </div>
+          {keepBoth ? (
+            <div className="home-import-dialog-note">将以重命名方式导入，不会修改原有书籍数据</div>
+          ) : (
+            <div className="home-import-dialog-warning">覆盖后，原有的阅读进度和笔记将被清除</div>
+          )}
+        </div>
+        {canKeepBoth && (
+          <label className="home-import-dialog-option">
+            <input checked={keepBoth} type="checkbox" onChange={(event) => setKeepBoth(event.currentTarget.checked)} />
+            <span>保留两个文件</span>
+          </label>
+        )}
+        {state.showApplyToRemaining && (
+          <label className="home-import-dialog-option">
+            <input
+              checked={applyToRemaining}
+              type="checkbox"
+              onChange={(event) => setApplyToRemaining(event.currentTarget.checked)}
+            />
+            <span>为后续所有冲突应用相同操作</span>
+          </label>
+        )}
+        <div className="home-import-dialog-actions">
+          <button
+            className="home-import-dialog-button"
+            disabled={isCancelDisabled}
+            type="button"
+            onClick={() => onCancel(applyToRemaining)}
+          >
+            取消
+          </button>
+          <button
+            className="home-import-dialog-button home-import-dialog-button-primary"
+            type="button"
+            onClick={() => onConfirm(keepBoth ? 'keepBoth' : 'overwrite', applyToRemaining)}
+          >
+            确定
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 };
 
 interface HomeSearchState {
@@ -117,6 +323,191 @@ const useHomeBookList = (): { bookList: BookInfo[]; setBookList: React.Dispatch<
   }, [loadBooks]);
 
   return { bookList, setBookList };
+};
+
+const useHomeBookImport = (
+  bookList: BookInfo[],
+  setBookList: React.Dispatch<React.SetStateAction<BookInfo[]>>,
+): {
+  conflictState: ImportConflictState | null;
+  onAdd: () => void;
+  onCancelConflict: (applyToRemaining: boolean) => void;
+  onConfirmConflict: (action: Exclude<ImportConflictAction, 'cancel'>, applyToRemaining: boolean) => void;
+} => {
+  const bookListRef = useRef(bookList);
+  const conflictResolverRef = useRef<((decision: ImportConflictDecision) => void) | null>(null);
+  const sharedConflictDecisionRef = useRef<ImportConflictDecision | null>(null);
+  const [conflictState, setConflictState] = useState<ImportConflictState | null>(null);
+
+  useEffect(() => {
+    bookListRef.current = bookList;
+  }, [bookList]);
+
+  const isSharedDecisionCompatible = useCallback((decision: ImportConflictDecision, state: ImportConflictState) => {
+    return decision.action !== 'keepBoth' || state.type === 'same-title';
+  }, []);
+
+  const requestConflictDecision = useCallback(
+    (state: ImportConflictState): Promise<ImportConflictDecision> => {
+      const sharedDecision = sharedConflictDecisionRef.current;
+      if (sharedDecision && isSharedDecisionCompatible(sharedDecision, state)) {
+        return Promise.resolve({ ...sharedDecision, applyToRemaining: false });
+      }
+      return new Promise((resolve) => {
+        conflictResolverRef.current = resolve;
+        setConflictState(state);
+      });
+    },
+    [isSharedDecisionCompatible],
+  );
+
+  const settleConflict = useCallback((decision: ImportConflictDecision) => {
+    const normalizedDecision = { ...decision, applyToRemaining: false };
+    if (decision.applyToRemaining) {
+      sharedConflictDecisionRef.current = normalizedDecision;
+    }
+    conflictResolverRef.current?.(decision);
+    conflictResolverRef.current = null;
+    setConflictState(null);
+  }, []);
+
+  const onCancelConflict = useCallback(
+    (applyToRemaining: boolean) => {
+      settleConflict({ action: 'cancel', applyToRemaining });
+    },
+    [settleConflict],
+  );
+
+  const onConfirmConflict = useCallback(
+    (action: Exclude<ImportConflictAction, 'cancel'>, applyToRemaining: boolean) => {
+      settleConflict({ action, applyToRemaining });
+    },
+    [settleConflict],
+  );
+
+  const onAdd = useCallback(() => {
+    void (async () => {
+      sharedConflictDecisionRef.current = null;
+      const files = await chooseBookFiles();
+      if (files.length === 0) return;
+
+      const supportedFiles = files.filter(isSupportedBookFile);
+      if (supportedFiles.length === 0) {
+        showGlobalFallback({ message: '请选择 TXT 或 EPUB 书籍文件', tone: 'error' });
+        return;
+      }
+      if (supportedFiles.length < files.length) {
+        showGlobalFallback({ message: '部分文件格式不支持，已自动跳过', tone: 'info' });
+      }
+
+      const latestBooks = await getAllBooks<BookInfo>();
+      let workingBooks = latestBooks.error ? bookListRef.current : latestBooks.data;
+      if (latestBooks.error) {
+        showGlobalFallback({ message: '书架读取失败，本次导入将使用当前列表继续', tone: 'info' });
+      }
+      let importedCount = 0;
+      let failedCount = 0;
+      const showApplyToRemaining = supportedFiles.length > 1;
+
+      for (const file of supportedFiles) {
+        try {
+          const imported = await importBookFileWithFallback(file);
+          const documentFingerprint = await getBookFingerprint(imported);
+          const fingerprint = imported.fingerprint || documentFingerprint;
+          const existingSameBook = workingBooks.find((book) => {
+            const identity = getBookIdentity(book);
+            return identity === fingerprint || identity === documentFingerprint;
+          });
+          const importedTitle = normalizeBookTitle(imported.title);
+
+          if (existingSameBook) {
+            const decision = await requestConflictDecision(
+              createImportConflictState({
+                existingBook: existingSameBook,
+                file,
+                imported,
+                showApplyToRemaining,
+                type: 'same-book',
+              }),
+            );
+            if (decision.action === 'cancel') continue;
+            clearReaderBookData(existingSameBook.id);
+            const result = await addBook({
+              ...imported,
+              fingerprint,
+              id: existingSameBook.id,
+              overwrite: true,
+              title: existingSameBook.title,
+            });
+            if (result.error || !result.data) {
+              throw new Error(result.message || `Failed to overwrite book: ${file.name}`);
+            }
+            workingBooks = upsertBookListItem(workingBooks, result.data);
+            importedCount += 1;
+            continue;
+          }
+
+          const existingSameTitleBook = workingBooks.find(
+            (book) => normalizeBookTitle(book.title) === importedTitle && getBookIdentity(book) !== fingerprint,
+          );
+          if (existingSameTitleBook) {
+            const decision = await requestConflictDecision(
+              createImportConflictState({
+                existingBook: existingSameTitleBook,
+                file,
+                imported,
+                showApplyToRemaining,
+                type: 'same-title',
+              }),
+            );
+            if (decision.action === 'cancel') continue;
+            if (decision.action === 'overwrite') {
+              clearReaderBookData(existingSameTitleBook.id);
+              const result = await addBook({
+                ...imported,
+                fingerprint,
+                id: existingSameTitleBook.id,
+                overwrite: true,
+                title: existingSameTitleBook.title,
+              });
+              if (result.error || !result.data) {
+                throw new Error(result.message || `Failed to overwrite book: ${file.name}`);
+              }
+              workingBooks = upsertBookListItem(workingBooks, result.data);
+              importedCount += 1;
+              continue;
+            }
+          }
+
+          const title = resolveUniqueBookTitle(imported.title, workingBooks, fingerprint);
+          const result = await addBook({
+            ...imported,
+            fingerprint,
+            title,
+          });
+          if (result.error || !result.data) {
+            throw new Error(result.message || `Failed to add book: ${file.name}`);
+          }
+          workingBooks = upsertBookListItem(workingBooks, result.data);
+          importedCount += 1;
+        } catch (error) {
+          failedCount += 1;
+          showGlobalFallback({ message: getImportFailureMessage(file, error), tone: 'error' });
+        }
+      }
+
+      setBookList(workingBooks);
+      if (importedCount > 0 && failedCount > 0) {
+        showGlobalFallback({ message: `已导入 ${importedCount} 本书，${failedCount} 本失败`, tone: 'info' });
+      } else if (importedCount > 0) {
+        showGlobalFallback({ message: `已导入 ${importedCount} 本书`, tone: 'success' });
+      } else if (failedCount > 0) {
+        showGlobalFallback({ message: '导入失败', tone: 'error' });
+      }
+    })();
+  }, [requestConflictDecision, setBookList]);
+
+  return { conflictState, onAdd, onCancelConflict, onConfirmConflict };
 };
 
 const useHomeSearch = (inputRef: React.RefObject<HTMLInputElement | null>): HomeSearchState => {
@@ -204,13 +595,23 @@ const SearchResultRow = ({ book, highlightedField, keyword, rowKey }: SearchResu
   const { id, title = '', author = '', image } = book;
   const matchedText = (book as SearchResult).matchedText?.[0] || '';
   const resolvedImage = useResolvedBookImage(id, image);
+  const [imageFailed, setImageFailed] = useState(false);
+  const shouldShowImage = Boolean(resolvedImage && !imageFailed);
+  useEffect(() => {
+    setImageFailed(false);
+  }, [id, image]);
+
   return (
     <div
       className="py-3.5 px-5 flex flex-row flex-nowrap items-center shrink-0 cursor-pointer hover:bg-light-gray-color-1 min-h-32"
       key={rowKey}
       item-id={id}
     >
-      {resolvedImage && <img className="w-16 mr-5" src={resolvedImage} item-id={id} alt={title} />}
+      {shouldShowImage ? (
+        <img className="w-16 mr-5" src={resolvedImage} item-id={id} alt={title} onError={() => setImageFailed(true)} />
+      ) : (
+        <BookCoverFallback className="w-16 h-24 mr-5" itemId={id} title={title} />
+      )}
       <div>
         <div className="text-lg text-text-color-1 font-medium break-all" item-id={id}>
           {highlightedField === 'title' ? renderHighlightedText(title, keyword, id) : title}
@@ -385,13 +786,8 @@ export const DesktopHome = (): React.JSX.Element => {
   const searchResultRef = useRef<HTMLDivElement>(null);
   const { bookList, setBookList } = useHomeBookList();
   const searchState = useHomeSearch(inputRef);
+  const { conflictState, onAdd, onCancelConflict, onConfirmConflict } = useHomeBookImport(bookList, setBookList);
   useHomeNativeNavigation(searchResultRef);
-
-  const onAdd = () => {
-    addBookByFile().then((books) => {
-      setBookList((current) => appendImportedBooks(current, books));
-    });
-  };
 
   return (
     <div>
@@ -439,6 +835,7 @@ export const DesktopHome = (): React.JSX.Element => {
           </div>
         </div>
       )}
+      <ImportConflictDialog state={conflictState} onCancel={onCancelConflict} onConfirm={onConfirmConflict} />
     </div>
   );
 };
@@ -448,13 +845,8 @@ export const MobileHome = (): React.JSX.Element => {
   const searchResultRef = useRef<HTMLDivElement>(null);
   const { bookList, setBookList } = useHomeBookList();
   const searchState = useHomeSearch(inputRef);
+  const { conflictState, onAdd, onCancelConflict, onConfirmConflict } = useHomeBookImport(bookList, setBookList);
   useHomeNativeNavigation(searchResultRef);
-
-  const onAdd = () => {
-    addBookByFile().then((books) => {
-      setBookList((current) => appendImportedBooks(current, books));
-    });
-  };
 
   return (
     <div className="w-full min-h-svh bg-front-bg-color-2">
@@ -495,6 +887,7 @@ export const MobileHome = (): React.JSX.Element => {
           </div>
         </div>
       )}
+      <ImportConflictDialog state={conflictState} onCancel={onCancelConflict} onConfirm={onConfirmConflict} />
     </div>
   );
 };

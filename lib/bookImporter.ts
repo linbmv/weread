@@ -1,6 +1,7 @@
 import { finalizeEpubResources, parseEpubToReaderDocument } from '@/lib/epubParser';
 import { createReader } from '@/lib/transformText';
 import { createReaderDocumentFromText } from '@/lib/readerDocument';
+import { sha256Hex } from '@/lib/utils';
 import type { BookResourceRecord } from '@/lib/bookResources';
 import type { ReaderBookDocument, ReaderBookSourceType } from '@/lib/readerDocument';
 
@@ -12,6 +13,11 @@ export interface ImportedBookData {
   title: string;
   resources: BookResourceRecord[];
   coverResourceKey?: string;
+  fingerprint?: string;
+}
+
+interface ImportBookOptions {
+  signal?: AbortSignal;
 }
 
 const getFileExtension = (file: File): string => {
@@ -23,8 +29,16 @@ export const isSupportedBookFile = (file: File): boolean => {
   return ['epub', 'txt'].includes(getFileExtension(file));
 };
 
-export const importBookFile = async (file: File): Promise<ImportedBookData> => {
-  const content = await createReader(file);
+const throwIfAborted = (signal?: AbortSignal): void => {
+  if (!signal?.aborted) return;
+  if (signal.reason instanceof Error) throw signal.reason;
+  throw new Error('Book import aborted.');
+};
+
+export const importBookFile = async (file: File, options: ImportBookOptions = {}): Promise<ImportedBookData> => {
+  const content = await createReader(file, { signal: options.signal });
+  const fingerprint = await sha256Hex(content);
+  throwIfAborted(options.signal);
   const extension = getFileExtension(file);
 
   if (extension === 'epub') {
@@ -32,7 +46,9 @@ export const importBookFile = async (file: File): Promise<ImportedBookData> => {
     // the EPUB worker. After this call `content` is detached and must not be
     // touched, which is safe here because we only read TXT files via the
     // other branch.
-    const { document, resources, coverResourceKey } = await parseEpubToReaderDocument(content.buffer, file.name);
+    const { document, resources, coverResourceKey } = await parseEpubToReaderDocument(content.buffer, file.name, {
+      signal: options.signal,
+    });
     return {
       author: document.author,
       document,
@@ -41,14 +57,17 @@ export const importBookFile = async (file: File): Promise<ImportedBookData> => {
       title: document.title,
       resources,
       coverResourceKey,
+      fingerprint,
     };
   }
 
   if (extension === 'txt') {
+    throwIfAborted(options.signal);
     const document = createReaderDocumentFromText({
       content,
       title: file.name,
     });
+    throwIfAborted(options.signal);
     return {
       author: document.author,
       document,
@@ -56,6 +75,7 @@ export const importBookFile = async (file: File): Promise<ImportedBookData> => {
       sourceType: 'txt',
       title: document.title,
       resources: [],
+      fingerprint,
     };
   }
 
