@@ -28,6 +28,7 @@ export enum EVENT_NAME {
   OPEN_READER_MENU_SEARCH = 'open-reader-menu-search',
   SET_CURRENT_BOOK_PAGE = 'set-current-book-page',
   SET_CURRENT_BOOK_DETAIL = 'set-current-book-detail',
+  ADD_READER_PAGE_BOOKMARK = 'add-reader-page-bookmark',
   SET_READER_ANNOTATIONS = 'set-reader-annotations',
   SET_READER_NAVIGATION_TARGET = 'set-reader-navigation-target',
   SET_READER_PROGRESS = 'set-reader-progress',
@@ -37,15 +38,13 @@ export enum EVENT_NAME {
 
 export const syncHook = subscribers;
 
-export const [getCurrentBookDetail, setCurrentBookDetail] = createSignal<BookInfo | null>(
-  null,
-  { subscriber: EVENT_NAME.SET_CURRENT_BOOK_DETAIL },
-);
+export const [getCurrentBookDetail, setCurrentBookDetail] = createSignal<BookInfo | null>(null, {
+  subscriber: EVENT_NAME.SET_CURRENT_BOOK_DETAIL,
+});
 
-export const [getTextSyntaxTree, setTextSyntaxTree] = createSignal<TextSyntaxTree>(
-  createEmptyTextSyntaxTree(),
-  { subscriber: EVENT_NAME.SET_TEXT_SYNTAX_TREE },
-);
+export const [getTextSyntaxTree, setTextSyntaxTree] = createSignal<TextSyntaxTree>(createEmptyTextSyntaxTree(), {
+  subscriber: EVENT_NAME.SET_TEXT_SYNTAX_TREE,
+});
 
 export const [getReaderSearchHighlight, setReaderSearchHighlight] = createSignal<ReaderSearchHighlight>(
   createEmptyReaderSearchHighlight(),

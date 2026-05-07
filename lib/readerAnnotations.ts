@@ -2,9 +2,9 @@ import { EVENT_NAME, syncHook } from '@/lib/subscribe';
 import { clamp, createRandomId, safeReadStorage, safeWriteStorage } from '@/lib/utils';
 import type { ReaderBlock, TextSyntaxTree } from '@/lib/transformText';
 
-export type ReaderAnnotationType = 'marker' | 'note' | 'underline' | 'wave';
+export type ReaderAnnotationType = 'bookmark' | 'marker' | 'note' | 'underline' | 'wave';
 
-export type ReaderStyleAnnotationType = Exclude<ReaderAnnotationType, 'note'>;
+export type ReaderStyleAnnotationType = Exclude<ReaderAnnotationType, 'bookmark' | 'note'>;
 
 export interface ReaderAnnotation {
   id: string;
@@ -13,7 +13,9 @@ export interface ReaderAnnotation {
   color: string;
   createdAt: number;
   endOffset: number;
+  groupId?: string;
   noteText?: string;
+  page?: number;
   startOffset: number;
   text: string;
   titleId?: number;
@@ -29,7 +31,17 @@ export interface ReaderAnnotationDraft {
   titleId?: number;
 }
 
+export interface ReaderBookmarkDraft {
+  blockId: string;
+  page: number;
+  startOffset?: number;
+  text: string;
+  titleId?: number;
+}
+
 export const READER_ANNOTATION_COLORS = ['#ff909c', '#b89fff', '#74b4ff', '#70d382', '#ffcb7e'] as const;
+
+export const READER_BOOKMARK_COLOR = '#0097ff';
 
 export const DEFAULT_READER_ANNOTATION_COLOR = READER_ANNOTATION_COLORS[4];
 
@@ -49,6 +61,10 @@ const getColorStorageKey = (type?: ReaderStyleAnnotationType): string => {
 
 const getDefaultReaderAnnotationColor = (type?: ReaderStyleAnnotationType): string => {
   return type ? DEFAULT_READER_STYLE_ANNOTATION_COLORS[type] : DEFAULT_READER_ANNOTATION_COLOR;
+};
+
+export const isReaderStyleAnnotationType = (type: ReaderAnnotationType): type is ReaderStyleAnnotationType => {
+  return type === 'marker' || type === 'underline' || type === 'wave';
 };
 
 const readAnnotationMap = (): Record<string, ReaderAnnotation[]> => {
@@ -80,6 +96,8 @@ const normalizeRange = (startOffset: number, endOffset: number, textLength: numb
 
 const createAnnotationId = (): string => createRandomId('annotation');
 
+export const createReaderAnnotationGroupId = (): string => createRandomId('annotation-group');
+
 const compareBlockId = (a: string, b: string): number => {
   const matchA = /(\d+)(?!.*\d)/u.exec(a);
   const matchB = /(\d+)(?!.*\d)/u.exec(b);
@@ -104,13 +122,52 @@ export const getReaderAnnotationsByBlock = (bookId: string | undefined, blockId:
   return getReaderAnnotations(bookId).filter((annotation) => annotation.blockId === blockId);
 };
 
+export const getReaderBookmarkForPage = (
+  bookId: string | undefined | null,
+  page: number,
+): ReaderAnnotation | undefined => {
+  if (!bookId || !Number.isFinite(page)) return undefined;
+  return getReaderAnnotations(bookId).find((annotation) => annotation.type === 'bookmark' && annotation.page === page);
+};
+
+export const saveReaderBookmark = (bookId: string, draft: ReaderBookmarkDraft): ReaderAnnotation | undefined => {
+  const text = draft.text.trim();
+  if (!bookId || !draft.blockId || !text || !Number.isFinite(draft.page)) return undefined;
+
+  const map = readAnnotationMap();
+  const list = map[bookId] || [];
+  const now = Date.now();
+  const existing = list.find((annotation) => annotation.type === 'bookmark' && annotation.page === draft.page);
+  const startOffset = clamp(Math.floor(draft.startOffset ?? 0), 0, Number.MAX_SAFE_INTEGER);
+  const annotation: ReaderAnnotation = {
+    id: existing?.id || createAnnotationId(),
+    blockId: draft.blockId,
+    bookId,
+    color: READER_BOOKMARK_COLOR,
+    createdAt: existing?.createdAt ?? now,
+    endOffset: startOffset + text.length,
+    page: draft.page,
+    startOffset,
+    text,
+    titleId: draft.titleId,
+    type: 'bookmark',
+    updatedAt: now,
+  };
+
+  map[bookId] = [...list.filter((item) => item.id !== annotation.id), annotation];
+  writeAnnotationMap(map);
+  emitAnnotationChange();
+  return annotation;
+};
+
 export const saveReaderAnnotation = (
   bookId: string,
   draft: ReaderAnnotationDraft,
   type: ReaderAnnotationType,
-  color = type === 'note' ? DEFAULT_READER_ANNOTATION_COLOR : getStoredReaderAnnotationColor(type),
+  color = isReaderStyleAnnotationType(type) ? getStoredReaderAnnotationColor(type) : DEFAULT_READER_ANNOTATION_COLOR,
   noteText?: string,
   existingId?: string,
+  groupId?: string,
 ): ReaderAnnotation | undefined => {
   const range = normalizeRange(draft.startOffset, draft.endOffset, draft.text.length);
   if (!bookId || range.start === range.end) return undefined;
@@ -118,13 +175,15 @@ export const saveReaderAnnotation = (
   const map = readAnnotationMap();
   const list = map[bookId] || [];
   const now = Date.now();
+  const existingAnnotation = existingId ? list.find((item) => item.id === existingId) : undefined;
   let annotation: ReaderAnnotation = {
     id: existingId || createAnnotationId(),
     bookId,
     blockId: draft.blockId,
     color,
-    createdAt: existingId ? list.find((item) => item.id === existingId)?.createdAt ?? now : now,
+    createdAt: existingAnnotation?.createdAt ?? now,
     endOffset: range.end,
+    groupId: groupId || existingAnnotation?.groupId,
     noteText: noteText?.trim() || undefined,
     startOffset: range.start,
     text: draft.text.slice(range.start, range.end),
@@ -134,11 +193,11 @@ export const saveReaderAnnotation = (
   };
 
   let nextList = list.filter((item) => item.id !== annotation.id);
-  if (type !== 'note') {
+  if (isReaderStyleAnnotationType(type)) {
     const mergedItems = nextList.filter((item) => {
       return (
         item.blockId === annotation.blockId &&
-        item.type !== 'note' &&
+        isReaderStyleAnnotationType(item.type) &&
         item.endOffset > annotation.startOffset &&
         item.startOffset < annotation.endOffset
       );
@@ -147,10 +206,12 @@ export const saveReaderAnnotation = (
     if (mergedItems.length > 0) {
       const mergedStart = Math.min(annotation.startOffset, ...mergedItems.map((item) => item.startOffset));
       const mergedEnd = Math.max(annotation.endOffset, ...mergedItems.map((item) => item.endOffset));
+      const mergedGroupIds = Array.from(new Set(mergedItems.map((item) => item.groupId).filter(Boolean)));
       annotation = {
         ...annotation,
         createdAt: Math.min(annotation.createdAt, ...mergedItems.map((item) => item.createdAt)),
         endOffset: mergedEnd,
+        groupId: annotation.groupId || (mergedGroupIds.length === 1 ? mergedGroupIds[0] : undefined),
         startOffset: mergedStart,
         text: draft.text.slice(mergedStart, mergedEnd),
       };

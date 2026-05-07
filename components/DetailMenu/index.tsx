@@ -13,6 +13,7 @@ import {
 import { findKeywordSentenceMatches } from '@/lib/searchText';
 import { trim } from '@/lib/transformText';
 import type { TextSyntaxTree } from '@/lib/transformText';
+import { OcticonSearch, OcticonXCircle } from '@/components/Octicon';
 import { t } from '@/locales';
 
 interface SearchResultText {
@@ -42,21 +43,7 @@ interface SearchResultTarget {
   page: number;
 }
 
-const ReaderSearchIcon = (): React.JSX.Element => (
-  <svg
-    className="reader-menu-search-icon"
-    xmlns="http://www.w3.org/2000/svg"
-    width="12"
-    height="12"
-    viewBox="0 0 24 24"
-    aria-hidden="true"
-  >
-    <g fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2">
-      <path d="m21 21l-4.34-4.34" />
-      <circle cx="11" cy="11" r="8" />
-    </g>
-  </svg>
-);
+const ReaderSearchIcon = (): React.JSX.Element => <OcticonSearch className="reader-menu-search-icon" />;
 
 const readerMenuSearchSessionState = new Map<string, ReaderMenuSearchSessionState>();
 
@@ -132,7 +119,12 @@ const clampSearchResultPage = (page: number, totalPage: number): number => {
   return Math.min(Math.max(page, 0), Math.max(totalPage, 0));
 };
 
-const getSearchMatchPage = (textSyntaxTree: TextSyntaxTree, blockId: string, matchStart: number, blockLength: number): number => {
+const getSearchMatchPage = (
+  textSyntaxTree: TextSyntaxTree,
+  blockId: string,
+  matchStart: number,
+  blockLength: number,
+): number => {
   const block = textSyntaxTree.blocks?.find((item) => item.id === blockId);
   const totalPage = textSyntaxTree.totalPage || 0;
   const startPage = textSyntaxTree.blockIdPage[blockId];
@@ -377,7 +369,11 @@ export const BookDetailMenu = (): React.JSX.Element => {
   }, [initialSearchState, searchCacheKey]);
 
   useEffect(() => {
-    if (initialSearchState.keyword && initialSearchState.showSearchResult && initialSearchState.searchResult.length === 0) {
+    if (
+      initialSearchState.keyword &&
+      initialSearchState.showSearchResult &&
+      initialSearchState.searchResult.length === 0
+    ) {
       startSearchFromKeyword(initialSearchState.keyword);
     }
   }, [initialSearchState, startSearchFromKeyword]);
@@ -460,20 +456,8 @@ export const BookDetailMenu = (): React.JSX.Element => {
             onChange={onSearchInput}
           />
           {searchKeyword && (
-            <button
-              aria-label="清除搜索"
-              className="reader-menu-search-clear"
-              type="button"
-              onClick={clearSearch}
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 16 16" aria-hidden="true">
-                <path
-                  fill="currentColor"
-                  fillRule="evenodd"
-                  d="M8 16A8 8 0 1 0 8 0a8 8 0 0 0 0 16M4.22 4.22a.75.75 0 0 1 1.06 0L8 6.94l2.72-2.72a.75.75 0 1 1 1.06 1.06L9.06 8l2.72 2.72a.75.75 0 1 1-1.06 1.06L8 9.06l-2.72 2.72a.75.75 0 0 1-1.06-1.06L6.94 8L4.22 5.28a.75.75 0 0 1 0-1.06"
-                  clipRule="evenodd"
-                />
-              </svg>
+            <button aria-label="清除搜索" className="reader-menu-search-clear" type="button" onClick={clearSearch}>
+              <OcticonXCircle />
             </button>
           )}
         </div>

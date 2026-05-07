@@ -46,6 +46,19 @@ import {
   saveReaderScrollPaddingX,
   saveReaderTheme,
 } from '@/lib/readerSettings';
+import {
+  OcticonBookmark,
+  OcticonFont,
+  OcticonMarker,
+  OcticonMenu,
+  OcticonMoon,
+  OcticonNote,
+  OcticonReadingMode,
+  OcticonSun,
+  OcticonUnderline,
+  OcticonWave,
+  OcticonWriteNote,
+} from '@/components/Octicon';
 import './index.scss';
 
 type FontCategory = 'all' | 'canger' | 'fangzheng' | 'other';
@@ -298,79 +311,17 @@ const mergeReaderFonts = (...fontLists: ReaderFontSetting[][]): ReaderFontSettin
   return Array.from(fontMap.values());
 };
 
-const ReaderMenuIcon = (): React.JSX.Element => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" aria-hidden="true">
-    <path
-      fill="none"
-      stroke="currentColor"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth="2"
-      d="M4 5h16M4 12h16M4 19h16"
-    />
-  </svg>
-);
+const ReaderMenuIcon = (): React.JSX.Element => <OcticonMenu />;
 
-const ReaderNoteIcon = (): React.JSX.Element => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" aria-hidden="true">
-    <path
-      fill="none"
-      stroke="currentColor"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth="2"
-      d="M12.67 19a2 2 0 0 0 1.416-.588l6.154-6.172a6 6 0 0 0-8.49-8.49L5.586 9.914A2 2 0 0 0 5 11.328V18a1 1 0 0 0 1 1zM16 8L2 22m15.5-7H9"
-    />
-  </svg>
-);
+const ReaderNoteIcon = (): React.JSX.Element => <OcticonNote />;
 
-const ReaderSettingIcon = (): React.JSX.Element => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" aria-hidden="true">
-    <path
-      fill="none"
-      stroke="currentColor"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth="2"
-      d="M12 7v14m4-9h2m-2-4h2M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4a4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3a3 3 0 0 0-3-3zm3-6h2M6 8h2"
-    />
-  </svg>
-);
+const ReaderSettingIcon = (): React.JSX.Element => <OcticonReadingMode />;
 
-const ReaderFontIcon = (): React.JSX.Element => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" aria-hidden="true">
-    <path
-      fill="none"
-      stroke="currentColor"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth="2"
-      d="M5 19l7-14 7 14M7 15h10"
-    />
-  </svg>
-);
+const ReaderFontIcon = (): React.JSX.Element => <OcticonFont />;
 
-const ReaderSunIcon = (): React.JSX.Element => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" aria-hidden="true">
-    <g fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2">
-      <circle cx="12" cy="12" r="4" />
-      <path d="M12 3v1m0 16v1m-9-9h1m16 0h1m-2.636-6.364l-.707.707M6.343 17.657l-.707.707m0-12.728l.707.707m11.314 11.314l.707.707" />
-    </g>
-  </svg>
-);
+const ReaderSunIcon = (): React.JSX.Element => <OcticonSun />;
 
-const ReaderMoonIcon = (): React.JSX.Element => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" aria-hidden="true">
-    <path
-      fill="none"
-      stroke="currentColor"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth="2"
-      d="M20.985 12.486a9 9 0 1 1-9.473-9.472c.405-.022.617.46.402.803a6 6 0 0 0 8.268 8.268c.344-.215.825-.004.803.401"
-    />
-  </svg>
-);
+const ReaderMoonIcon = (): React.JSX.Element => <OcticonMoon />;
 
 interface ReaderSpacingControlProps {
   readingMode: ReaderReadingMode;
@@ -392,7 +343,7 @@ const ReaderSpacingControl = ({ readingMode }: ReaderSpacingControlProps): React
   const max = isPaged ? MAX_READER_PAGE_GAP_RATIO : MAX_READER_SCROLL_PADDING_X;
   const defaultValue = isPaged ? DEFAULT_READER_PAGE_GAP_RATIO : DEFAULT_READER_SCROLL_PADDING_X;
   const value = isPaged ? pageGapRatio : scrollPaddingX;
-  const title = isPaged ? '页间距' : '页外距';
+  const title = isPaged ? '页间距' : '内边距';
   const formatLabel = isPaged ? (v: number) => `${Math.round(v * 100)}%` : (v: number) => `${Math.round(v)}px`;
 
   const flushPendingApply = useCallback(() => {
@@ -1059,60 +1010,18 @@ const formatReaderNoteCopyDate = (value: number): string => {
   return `${year}/${month}/${day}`;
 };
 
-const ReaderAnnotationMarkerPanelIcon = (): React.JSX.Element => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" aria-hidden="true">
-    <rect x="2" y="2" width="20" height="20" rx="4" fill="rgba(117, 119, 120, 0.15)" />
-    <path
-      fill="none"
-      stroke="currentColor"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth="2"
-      d="M5 19l7-14 7 14M7 15h10"
-    />
-  </svg>
-);
+const ReaderAnnotationMarkerPanelIcon = (): React.JSX.Element => <OcticonMarker />;
 
-const ReaderAnnotationWavePanelIcon = (): React.JSX.Element => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" aria-hidden="true">
-    <path
-      fill="none"
-      stroke="currentColor"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth="2"
-      d="m6 16l6-12l6 12M8 12h8M4 21c1.1 0 1.1-1 2.3-1s1.1 1 2.3 1c1.1 0 1.1-1 2.3-1c1.1 0 1.1 1 2.3 1c1.1 0 1.1-1 2.3-1c1.1 0 1.1 1 2.3 1c1.1 0 1.1-1 2.3-1"
-    />
-  </svg>
-);
+const ReaderAnnotationWavePanelIcon = (): React.JSX.Element => <OcticonWave />;
 
-const ReaderAnnotationUnderlinePanelIcon = (): React.JSX.Element => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" aria-hidden="true">
-    <path
-      fill="none"
-      stroke="currentColor"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth="2"
-      d="M4 20h16M6 16l6-12l6 12M8 12h8"
-    />
-  </svg>
-);
+const ReaderAnnotationUnderlinePanelIcon = (): React.JSX.Element => <OcticonUnderline />;
 
-const ReaderAnnotationNotePanelIcon = (): React.JSX.Element => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" aria-hidden="true">
-    <path
-      fill="none"
-      stroke="currentColor"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth="2"
-      d="M13 21h8m.174-14.188a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"
-    />
-  </svg>
-);
+const ReaderAnnotationNotePanelIcon = (): React.JSX.Element => <OcticonWriteNote />;
+
+const ReaderAnnotationBookmarkPanelIcon = (): React.JSX.Element => <OcticonBookmark />;
 
 const getAnnotationTypeIcon = (annotation: ReaderAnnotation): React.JSX.Element => {
+  if (annotation.type === 'bookmark') return <ReaderAnnotationBookmarkPanelIcon />;
   if (annotation.type === 'note') return <ReaderAnnotationNotePanelIcon />;
   if (annotation.type === 'wave') return <ReaderAnnotationWavePanelIcon />;
   if (annotation.type === 'underline') return <ReaderAnnotationUnderlinePanelIcon />;
@@ -1168,7 +1077,9 @@ const ReaderNotePanel = (): React.JSX.Element => {
       const block = getAnnotationBlock(textSyntaxTree, annotation);
       const titleId = annotation.titleId ?? block?.titleId ?? 0;
       const page =
-        textSyntaxTree.blockIdPage[annotation.blockId] ?? textSyntaxTree.titleIdPage[titleId] ?? getPageNum();
+        typeof annotation.page === 'number' && Number.isFinite(annotation.page)
+          ? annotation.page
+          : (textSyntaxTree.blockIdPage[annotation.blockId] ?? textSyntaxTree.titleIdPage[titleId] ?? getPageNum());
 
       setReaderNavigationTarget({
         blockId: annotation.blockId,

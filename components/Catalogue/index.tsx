@@ -12,16 +12,16 @@ import {
   syncHook,
 } from '@/lib/subscribe';
 import { SORT_DIRECTION } from '@/lib/enums';
+import { getReaderBookmarkForPage } from '@/lib/readerAnnotations';
 import { getReaderProgress } from '@/lib/readerProgress';
 import { getStoredReaderReadingMode } from '@/lib/readerSettings';
 import { useResolvedBookImage } from '@/lib/useResolvedBookImage';
-
-const SORT_ICON_STYLE = {
-  '--ran-icon-font-size': '20px',
-};
+import { OcticonSortAsc } from '@/components/Octicon';
+import './index.scss';
 
 const toPage = (e: Event) => {
   const target = e.target as HTMLElement;
+  if (target.closest('[data-reader-catalog-bookmark]')) return;
   const index = target.closest<HTMLElement>('[data-title-id]')?.dataset.titleId || '';
   const titleId = Number(index);
   if (!Number.isFinite(titleId)) return;
@@ -48,10 +48,7 @@ const getCurrentTitleId = (bookId: string | undefined, textSyntaxTree: TextSynta
   const progressTitleId = progress?.titleId;
   const navigationTarget = getReaderNavigationTarget();
   if (getStoredReaderReadingMode() === 'scroll') {
-    if (
-      navigationTarget.titleId !== undefined &&
-      (!progress || navigationTarget.revision >= progress.updatedAt)
-    ) {
+    if (navigationTarget.titleId !== undefined && (!progress || navigationTarget.revision >= progress.updatedAt)) {
       return navigationTarget.titleId;
     }
     if (progressTitleId !== undefined) {
@@ -61,15 +58,41 @@ const getCurrentTitleId = (bookId: string | undefined, textSyntaxTree: TextSynta
   return pageTitleId;
 };
 
+const getCatalogueReadPercent = (
+  bookId: string | undefined,
+  currentTitleId: number | undefined,
+): number | undefined => {
+  const progress = getReaderProgress(bookId);
+  if (!progress || progress.titleId !== currentTitleId) return undefined;
+  if (typeof progress.readPercent !== 'number' || !Number.isFinite(progress.readPercent)) return undefined;
+  const percent = Math.min(Math.max(Math.floor(progress.readPercent), 0), 100);
+  return percent >= 1 ? percent : undefined;
+};
+
+const isCurrentPageBookmarked = (bookId: string | undefined): boolean => {
+  return Boolean(getReaderBookmarkForPage(bookId, getPageNum()));
+};
+
+const CatalogueProgressIcon = (): React.JSX.Element => (
+  <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path
+      d="M9.82962 2.971 13.7026 6.62675c.0987.07768.1762.17832.2202.29838.0018.00883.0036.01412.0036.01942.0317.07062.0422.14831.0458.22599 0 .0106.0088.02295.0088.03355 0 .02118-.0141.03884-.0141.06003-.0035.0459-.0141.09181-.03.13771-.0141.05473-.037.10417-.0616.15361-.0159.03001-.037.05826-.0582.08651-.0193.02472-.0281.0565-.0546.07945l-3.93288 3.8102c-.28364.286-.74521.286-1.02532 0-.28363-.2825-.28363-.7451 0-1.0311l2.6962-2.57077-9.93813.00008c-.40519 0-.738151-.33016-.738151-.73624s.331201-.73624.738151-.73624l9.91523-.00007L8.8043 4.00033c-.28363-.28073-.28363-.74507 0-1.02933.28011-.28249.74168-.28249 1.02532 0Z"
+      fill="currentColor"
+    />
+  </svg>
+);
+
 export const Catalogue = (): React.JSX.Element => {
   const sortRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const hasAlignedCurrentTitleRef = useRef(false);
   const [sortDirection, setSortDirection] = useState(SORT_DIRECTION.DOWN);
+  const [, setMetaRevision] = useState(0);
   const bookDetail: BookInfo | null = getCurrentBookDetail();
   const textSyntaxTree: TextSyntaxTree = getTextSyntaxTree();
   const [currentTitleId, setCurrentTitleId] = useState(() => getCurrentTitleId(bookDetail?.id, textSyntaxTree));
   const resolvedCover = useResolvedBookImage(bookDetail?.id, bookDetail?.image);
+  const currentReadPercent = getCatalogueReadPercent(bookDetail?.id, currentTitleId);
 
   const toSort = useCallback(() => {
     const next = sortDirection === SORT_DIRECTION.DOWN ? SORT_DIRECTION.UP : SORT_DIRECTION.DOWN;
@@ -86,6 +109,18 @@ export const Catalogue = (): React.JSX.Element => {
     const nextTitleId = getCurrentTitleId(bookDetail?.id, getTextSyntaxTree());
     setCurrentTitleId((prevTitleId) => (prevTitleId === nextTitleId ? prevTitleId : nextTitleId));
   }, [bookDetail?.id]);
+
+  const updateCatalogueMeta = useCallback(() => {
+    updateCurrentTitleId();
+    setMetaRevision((revision) => revision + 1);
+  }, [updateCurrentTitleId]);
+
+  const addCurrentPageBookmark = useCallback((event: React.MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    syncHook.call(EVENT_NAME.ADD_READER_PAGE_BOOKMARK);
+    setMetaRevision((revision) => revision + 1);
+  }, []);
 
   const alignCurrentTitle = useCallback(() => {
     if (hasAlignedCurrentTitleRef.current || currentTitleId === undefined) return false;
@@ -115,20 +150,22 @@ export const Catalogue = (): React.JSX.Element => {
   }, [toSort]);
 
   useEffect(() => {
-    updateCurrentTitleId();
-    syncHook.tap(EVENT_NAME.SET_CURRENT_BOOK_PAGE, updateCurrentTitleId);
-    syncHook.tap(EVENT_NAME.SET_CURRENT_BOOK_DETAIL, updateCurrentTitleId);
-    syncHook.tap(EVENT_NAME.SET_READER_NAVIGATION_TARGET, updateCurrentTitleId);
-    syncHook.tap(EVENT_NAME.SET_READER_PROGRESS, updateCurrentTitleId);
-    syncHook.tap(EVENT_NAME.SET_TEXT_SYNTAX_TREE, updateCurrentTitleId);
+    updateCatalogueMeta();
+    syncHook.tap(EVENT_NAME.SET_CURRENT_BOOK_PAGE, updateCatalogueMeta);
+    syncHook.tap(EVENT_NAME.SET_CURRENT_BOOK_DETAIL, updateCatalogueMeta);
+    syncHook.tap(EVENT_NAME.SET_READER_ANNOTATIONS, updateCatalogueMeta);
+    syncHook.tap(EVENT_NAME.SET_READER_NAVIGATION_TARGET, updateCatalogueMeta);
+    syncHook.tap(EVENT_NAME.SET_READER_PROGRESS, updateCatalogueMeta);
+    syncHook.tap(EVENT_NAME.SET_TEXT_SYNTAX_TREE, updateCatalogueMeta);
     return () => {
-      syncHook.off(EVENT_NAME.SET_CURRENT_BOOK_PAGE, updateCurrentTitleId);
-      syncHook.off(EVENT_NAME.SET_CURRENT_BOOK_DETAIL, updateCurrentTitleId);
-      syncHook.off(EVENT_NAME.SET_READER_NAVIGATION_TARGET, updateCurrentTitleId);
-      syncHook.off(EVENT_NAME.SET_READER_PROGRESS, updateCurrentTitleId);
-      syncHook.off(EVENT_NAME.SET_TEXT_SYNTAX_TREE, updateCurrentTitleId);
+      syncHook.off(EVENT_NAME.SET_CURRENT_BOOK_PAGE, updateCatalogueMeta);
+      syncHook.off(EVENT_NAME.SET_CURRENT_BOOK_DETAIL, updateCatalogueMeta);
+      syncHook.off(EVENT_NAME.SET_READER_ANNOTATIONS, updateCatalogueMeta);
+      syncHook.off(EVENT_NAME.SET_READER_NAVIGATION_TARGET, updateCatalogueMeta);
+      syncHook.off(EVENT_NAME.SET_READER_PROGRESS, updateCatalogueMeta);
+      syncHook.off(EVENT_NAME.SET_TEXT_SYNTAX_TREE, updateCatalogueMeta);
     };
-  }, [updateCurrentTitleId]);
+  }, [updateCatalogueMeta]);
 
   useLayoutEffect(() => {
     if (alignCurrentTitle()) return;
@@ -151,29 +188,53 @@ export const Catalogue = (): React.JSX.Element => {
         </div>
       </div>
       <div className="mx-9 basis-10 flex items-center justify-end shrink-0" ref={sortRef}>
-        <r-icon
+        <OcticonSortAsc
           className={`cursor-pointer hover-icon ${sortDirection}`}
-          name="sort"
           style={{
-            ...SORT_ICON_STYLE,
             transform: sortDirection === SORT_DIRECTION.DOWN ? 'rotate(180deg)' : 'rotate(0deg)',
             transition: 'transform 180ms ease',
           }}
-        ></r-icon>
+        />
       </div>
       <div className="reader-menu-scroll-area overflow-y-auto flex-auto" ref={scrollRef}>
         {textSyntaxTree?.sequences?.map((item) => {
           const isCurrentTitle = item.titleId === currentTitleId;
+          const isBookmarked = isCurrentTitle && isCurrentPageBookmarked(bookDetail?.id);
           return (
             <div
-              className={`px-7 h-12 ${
-                isCurrentTitle ? 'text-brand-blue-color-1' : 'text-text-color-2'
-              } font-normal text-base hover:bg-front-bg-color-2 cursor-pointer`}
+              className={`readerCatalog_list_item ${isCurrentTitle ? 'is-current' : ''}`}
               data-title-id={item.titleId}
               key={item.titleId}
             >
-              <div className="border-t border-front-bg-color-1 h-full w-full flex items-center">
-                {item.title}
+              <div className="readerCatalog_list_item_inner">
+                <div className="readerCatalog_list_item_title">{item.title}</div>
+                {isCurrentTitle ? (
+                  <div className="readerCatalog_list_item_meta">
+                    {currentReadPercent !== undefined ? (
+                      <div className="readerCatalog_list_item_meta_progress">
+                        <CatalogueProgressIcon />
+                        <div>{`当前读到 ${currentReadPercent}%`}</div>
+                      </div>
+                    ) : (
+                      <div></div>
+                    )}
+                    <button
+                      className="readerCatalog_list_item_meta_add_bookMark"
+                      data-reader-catalog-bookmark="true"
+                      type="button"
+                      onClick={addCurrentPageBookmark}
+                    >
+                      {isBookmarked ? (
+                        <span>已添加书签</span>
+                      ) : (
+                        <>
+                          <span className="readerCatalog_list_item_meta_add_bookMark_plus">+</span>
+                          <span>书签</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                ) : null}
               </div>
             </div>
           );

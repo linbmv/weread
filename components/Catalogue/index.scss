@@ -1,0 +1,77 @@
+.readerCatalog_list_item {
+  min-height: 48px;
+  padding: 0 28px;
+  color: var(--text-color-2);
+  cursor: pointer;
+  font-size: 16px;
+  font-weight: 400;
+}
+
+.readerCatalog_list_item:hover {
+  background: var(--front-bg-color-2);
+}
+
+.readerCatalog_list_item_inner {
+  width: 100%;
+  min-height: 48px;
+  border-top: 1px solid var(--front-bg-color-1);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.readerCatalog_list_item.is-current .readerCatalog_list_item_inner {
+  min-height: 85px;
+}
+
+.readerCatalog_list_item.is-current .readerCatalog_list_item_title {
+  color: var(--brand-blue-color-1);
+}
+
+.readerCatalog_list_item_meta {
+  width: 100%;
+  color: #76787c;
+  display: flex;
+  align-items: flex-end;
+  font-family:
+    DIN-Medium,
+    PingFang SC,
+    -apple-system,
+    SF UI Text,
+    Lucida Grande,
+    STheiti,
+    Microsoft YaHei,
+    sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 18px;
+}
+
+.readerCatalog_list_item_meta_progress {
+  display: flex;
+  align-items: center;
+  margin-top: 12px;
+}
+
+.readerCatalog_list_item_meta_progress svg {
+  display: block;
+  margin-right: 6px;
+}
+
+.readerCatalog_list_item_meta_add_bookMark {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  margin-left: auto;
+  padding: 0;
+}
+
+.readerCatalog_list_item_meta_add_bookMark:hover {
+  color: var(--brand-blue-color-1);
+}
+
+.readerCatalog_list_item_meta_add_bookMark_plus {
+  margin-right: 2px;
+}

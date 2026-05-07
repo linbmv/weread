@@ -1,4 +1,4 @@
-import { type KeyboardEvent, type SVGProps, useCallback, useEffect, useRef, useState } from 'react';
+import { type KeyboardEvent, useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { debounce } from 'ranuts/utils';
 import { BookCard } from '@/components/BookCard';
@@ -12,6 +12,11 @@ import { ROUTE_PATH } from '@/router';
 import { DEVICE_ENUM, useCheckDevice } from '@/lib/hooks';
 import { useResolvedBookImage } from '@/lib/useResolvedBookImage';
 import { Loading } from '@/components/Loading';
+import {
+  OcticonChevronRight as HomeArrowRightIcon,
+  OcticonPlus as HomePlusIcon,
+  OcticonSearch as HomeSearchIcon,
+} from '@/components/Octicon';
 import { t } from '@/locales';
 import 'ranui/input';
 
@@ -33,51 +38,6 @@ const MOBILE_INPUT_STYLE = {
 };
 
 const MAX_BOOK_LOAD_RETRIES = 3;
-
-const HomeSearchIcon = (props: SVGProps<SVGSVGElement>): React.JSX.Element => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" aria-hidden="true" {...props}>
-    <g fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2">
-      <path d="m21 21l-4.34-4.34" />
-      <circle cx="11" cy="11" r="8" />
-    </g>
-  </svg>
-);
-
-const HomePlusIcon = (props: SVGProps<SVGSVGElement>): React.JSX.Element => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" aria-hidden="true" {...props}>
-    <path
-      fill="none"
-      stroke="currentColor"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth="2"
-      d="M5 12h14m-7-7v14"
-    />
-  </svg>
-);
-
-const HomeArrowRightIcon = (props: SVGProps<SVGSVGElement>): React.JSX.Element => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" aria-hidden="true" {...props}>
-    <path
-      fill="none"
-      stroke="currentColor"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth="2"
-      d="m9 18l6-6l-6-6"
-    />
-  </svg>
-);
-
-const HomeSearchEmptyIcon = (props: SVGProps<SVGSVGElement>): React.JSX.Element => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" aria-hidden="true" {...props}>
-    <g fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2">
-      <path d="m13.5 8.5l-5 5m0-5l5 5" />
-      <circle cx="11" cy="11" r="8" />
-      <path d="m21 21l-4.3-4.3" />
-    </g>
-  </svg>
-);
 
 const appendImportedBooks = (bookList: BookInfo[], importedBooks: BookInfo[]): BookInfo[] => {
   if (importedBooks.length === 0) return bookList;
@@ -159,9 +119,7 @@ const useHomeBookList = (): { bookList: BookInfo[]; setBookList: React.Dispatch<
   return { bookList, setBookList };
 };
 
-const useHomeSearch = (
-  inputRef: React.RefObject<HTMLInputElement | null>,
-): HomeSearchState => {
+const useHomeSearch = (inputRef: React.RefObject<HTMLInputElement | null>): HomeSearchState => {
   const [searchValue, setSearchValue] = useState<string>('');
   const [searchLoading, setSearchLoading] = useState<boolean>(false);
   const [searchTitleResult, setSearchTitleResult] = useState<BookInfo[]>([]);
@@ -248,7 +206,7 @@ const SearchResultRow = ({ book, highlightedField, keyword, rowKey }: SearchResu
   const resolvedImage = useResolvedBookImage(id, image);
   return (
     <div
-      className="py-3.5 px-5 flex flex-row flex-nowrap items-center shrink-0 cursor-pointer hover:bg-blue-50 min-h-32"
+      className="py-3.5 px-5 flex flex-row flex-nowrap items-center shrink-0 cursor-pointer hover:bg-light-gray-color-1 min-h-32"
       key={rowKey}
       item-id={id}
     >
@@ -352,7 +310,6 @@ const SearchResultsPanel = ({ state, panelClassName, searchResultRef }: SearchRe
         {noResult && (
           <div className="h-full">
             <div className="flex flex-col items-center justify-center h-full">
-              <HomeSearchEmptyIcon className="text-text-color-2" style={{ width: 120, height: 120 }} />
               <div className="text-text-color-2 font-normal text-xl">{t('no_result')}</div>
             </div>
           </div>
@@ -390,21 +347,13 @@ const ImportCard = ({ className, iconSize, onAdd }: ImportCardProps): React.JSX.
   };
 
   return (
-    <div
-      className={className}
-      role="button"
-      tabIndex={0}
-      onClick={onAdd}
-      onKeyDown={onKeyDown}
-    >
+    <div className={className} role="button" tabIndex={0} onClick={onAdd} onKeyDown={onKeyDown}>
       <HomePlusIcon style={{ width: iconSize, height: iconSize, color: 'var(--icon-color-2)' }} />
     </div>
   );
 };
 
-const useHomeNativeNavigation = (
-  searchResultRef: React.RefObject<HTMLDivElement | null>,
-): void => {
+const useHomeNativeNavigation = (searchResultRef: React.RefObject<HTMLDivElement | null>): void => {
   const navigate = useNavigate();
   useEffect(() => {
     const element = searchResultRef.current;

@@ -99,6 +99,76 @@ const MOBILE_ICON_STYLE = {
   '--ran-icon-color': 'var(--icon-color-1)',
 };
 
+const debugReader = (_label: string, _detail?: Record<string, unknown>): void => {};
+
+const summarizeDebugNumber = (value: number | undefined): number | undefined => {
+  return typeof value === 'number' && Number.isFinite(value) ? Math.round(value * 1000) / 1000 : undefined;
+};
+
+const summarizeDebugLocator = (locator?: ReaderLocator | null): Record<string, unknown> | null => {
+  if (!locator) return null;
+  return {
+    blockId: locator.blockId,
+    blockPageOffset: locator.blockPageOffset,
+    blockScrollRatio: summarizeDebugNumber(locator.blockScrollRatio),
+    bookId: locator.bookId,
+    globalProgress: summarizeDebugNumber(locator.globalProgress),
+    page: locator.page,
+    readPercent: locator.readPercent,
+    readingMode: locator.readingMode,
+    titleId: locator.titleId,
+    totalPageCount: locator.totalPageCount,
+    updatedAt: locator.updatedAt,
+    visiblePages: locator.visiblePages,
+  };
+};
+
+const summarizeDebugTree = (textSyntaxTree: TextSyntaxTree): Record<string, unknown> => ({
+  blockIdPageCount: Object.keys(textSyntaxTree.blockIdPage || {}).length,
+  blockIdPageEndCount: Object.keys(textSyntaxTree.blockIdPageEnd || {}).length,
+  blocks: textSyntaxTree.blocks.length,
+  pageTitleIdLength: textSyntaxTree.pageTitleId.length,
+  rawTextLength: textSyntaxTree.rawText.length,
+  sequences: textSyntaxTree.sequences.length,
+  titleIdPageCount: Object.keys(textSyntaxTree.titleIdPage || {}).length,
+  totalPage: textSyntaxTree.totalPage,
+});
+
+const summarizeDebugBlock = (block?: ReaderBlock): Record<string, unknown> | null => {
+  if (!block) return null;
+  return {
+    end: block.end,
+    id: block.id,
+    start: block.start,
+    textHead: block.text.slice(0, 40),
+    titleId: block.titleId,
+    type: block.type,
+  };
+};
+
+const summarizeDebugChapterStarts = (
+  titleIds: readonly number[],
+  chapterStartPages: Record<number, number>,
+): Record<string, unknown> => ({
+  count: Object.keys(chapterStartPages).length,
+  entries: titleIds.slice(0, 8).map((titleId) => [titleId, chapterStartPages[titleId]]),
+  missing: titleIds.filter((titleId) => !Number.isFinite(chapterStartPages[titleId])).slice(0, 8),
+});
+
+const summarizeDebugPaginationMap = (chapterPaginations: Map<number, ChapterPagination>): Record<string, unknown> => ({
+  entries: Array.from(chapterPaginations.entries())
+    .slice(0, 8)
+    .map(([titleId, pagination]) => [
+      titleId,
+      {
+        blocks: Object.keys(pagination.blockIdLocalPage).length,
+        chapterPageCount: pagination.chapterPageCount,
+        estimated: pagination.estimated,
+      },
+    ]),
+  size: chapterPaginations.size,
+});
+
 const ReaderPagePreviousIcon = (): React.JSX.Element => <OcticonChevronLeft className="reader-page-nav-icon" />;
 
 const ReaderPageNextIcon = (): React.JSX.Element => <OcticonChevronRight className="reader-page-nav-icon" />;
@@ -1879,6 +1949,15 @@ const hasCompleteChapterStartPages = (
   return titleIds.length > 0 && titleIds.every((titleId) => Number.isFinite(chapterStartPages[titleId]));
 };
 
+const getLocatorTargetTitleId = (
+  locator: ReaderLocator | null | undefined,
+  blocks: readonly ReaderBlock[],
+): number | undefined => {
+  if (!locator) return undefined;
+  const block = locator.blockId ? blocks.find((item) => item.id === locator.blockId) : undefined;
+  return block?.titleId ?? locator.titleId;
+};
+
 const createScrollTargetLocator = ({
   blockId,
   bookId,
@@ -2104,6 +2183,7 @@ const ReaderScrollContent = ({
   } = useReaderAnnotationActions({ bookId, clearSelection, selectionMenuState });
   const copyToastTimerRef = useRef<number | null>(null);
   const consumedNavigationRevisionRef = useRef(0);
+  const lastScrollLocatorLogKeyRef = useRef('');
   const [copyToastVisible, setCopyToastVisible] = useState(false);
   const readerSearchHighlight = getReaderSearchHighlight();
   const searchKeyword = readerSearchHighlight.hasResult ? readerSearchHighlight.keyword : '';
@@ -2123,6 +2203,19 @@ const ReaderScrollContent = ({
     });
     return map;
   }, [annotations]);
+
+  useEffect(() => {
+    debugReader('scroll.context', {
+      bookId,
+      currentTitleId,
+      navigationRevision,
+      pageNum: getPageNum(),
+      progressLocator: summarizeDebugLocator(progressLocator),
+      targetBlockId,
+      targetBlockRatio: summarizeDebugNumber(targetBlockRatio),
+      tree: summarizeDebugTree(textSyntaxTree),
+    });
+  }, [bookId, currentTitleId, navigationRevision, progressLocator, targetBlockId, targetBlockRatio, textSyntaxTree]);
 
   useEffect(() => {
     const updateAnnotations = () => {
@@ -2163,7 +2256,7 @@ const ReaderScrollContent = ({
   }, []);
 
   const saveScrollLocator = useCallback(
-    (anchorY?: number) => {
+    (anchorY?: number, reason = 'scroll-save') => {
       if (!bookId) return;
       const locator = createReaderScrollLocator({
         anchorY,
@@ -2172,21 +2265,57 @@ const ReaderScrollContent = ({
         textSyntaxTree,
       });
       if (locator) {
+        const logKey = `${reason}|${locator.page}|${locator.titleId}|${locator.blockId}|${Math.round(
+          (locator.blockScrollRatio ?? 0) * 1000,
+        )}`;
+        if (reason !== 'scroll-event' || lastScrollLocatorLogKeyRef.current !== logKey) {
+          lastScrollLocatorLogKeyRef.current = logKey;
+          debugReader('scroll.save-locator', {
+            anchorY,
+            currentTitleId,
+            locator: summarizeDebugLocator(locator),
+            reason,
+            scrollY: Math.round(window.scrollY),
+          });
+        }
         saveReaderProgress(locator);
+      } else {
+        debugReader('scroll.save-locator-empty', {
+          anchorY,
+          currentTitleId,
+          hasContent: Boolean(contentRef.current),
+          reason,
+          scrollY: Math.round(window.scrollY),
+        });
       }
     },
-    [bookId, textSyntaxTree],
+    [bookId, currentTitleId, textSyntaxTree],
   );
 
   const saveScrollDefaultLocator = useCallback(() => {
-    saveScrollLocator();
+    saveScrollLocator(undefined, 'scroll-default');
   }, [saveScrollLocator]);
 
   const restoreScrollBlock = useCallback(
     (blockId: string, ratio: number, align: 'anchor' | 'center', onRestored?: () => void) => {
+      debugReader('scroll.restore-request', {
+        align,
+        blockId,
+        currentTitleId,
+        ratio: summarizeDebugNumber(ratio),
+        scrollY: Math.round(window.scrollY),
+      });
       window.requestAnimationFrame(() => {
         const targetElement = contentRef.current?.querySelector<HTMLElement>(`[data-reader-block-id="${blockId}"]`);
-        if (!targetElement) return;
+        if (!targetElement) {
+          debugReader('scroll.restore-missing-target', {
+            align,
+            blockId,
+            currentTitleId,
+            ratio: summarizeDebugNumber(ratio),
+          });
+          return;
+        }
         const rect = targetElement.getBoundingClientRect();
         const targetAnchorY = align === 'center' ? window.innerHeight / 2 : getReaderScrollAnchorY();
         const targetTop = Math.max(
@@ -2194,10 +2323,20 @@ const ReaderScrollContent = ({
           0,
         );
         window.scrollTo({ behavior: 'auto', top: targetTop });
+        debugReader('scroll.restore-applied', {
+          align,
+          blockId,
+          currentTitleId,
+          rectBottom: Math.round(rect.bottom),
+          rectHeight: Math.round(rect.height),
+          rectTop: Math.round(rect.top),
+          targetAnchorY: Math.round(targetAnchorY),
+          targetTop: Math.round(targetTop),
+        });
         onRestored?.();
       });
     },
-    [],
+    [currentTitleId],
   );
 
   const saveScrollTargetLocator = useCallback(
@@ -2209,7 +2348,17 @@ const ReaderScrollContent = ({
         textSyntaxTree,
       });
       if (locator) {
+        debugReader('scroll.save-target-locator', {
+          blockId,
+          locator: summarizeDebugLocator(locator),
+          ratio: summarizeDebugNumber(ratio),
+        });
         saveReaderProgress(locator);
+      } else {
+        debugReader('scroll.save-target-locator-empty', {
+          blockId,
+          ratio: summarizeDebugNumber(ratio),
+        });
       }
     },
     [bookId, textSyntaxTree],
@@ -2220,6 +2369,12 @@ const ReaderScrollContent = ({
       if (consumedNavigationRevisionRef.current !== navigationRevision) {
         consumedNavigationRevisionRef.current = navigationRevision;
         const ratio = targetBlockRatio ?? 0;
+        debugReader('scroll.navigation-consume', {
+          navigationRevision,
+          ratio: summarizeDebugNumber(ratio),
+          targetBlockId,
+          titleId: currentTitleId,
+        });
         restoreScrollBlock(targetBlockId, ratio, 'center', () => {
           saveScrollTargetLocator(targetBlockId, ratio);
           if (getReaderNavigationTarget().revision === navigationRevision) {
@@ -2231,10 +2386,19 @@ const ReaderScrollContent = ({
     }
 
     if (progressLocator?.blockId && progressLocator.titleId === currentTitleId) {
+      debugReader('scroll.progress-restore', {
+        currentTitleId,
+        progressLocator: summarizeDebugLocator(progressLocator),
+      });
       restoreScrollBlock(progressLocator.blockId, progressLocator.blockScrollRatio ?? 0, 'anchor');
       return;
     }
 
+    debugReader('scroll.reset-top', {
+      currentTitleId,
+      progressLocator: summarizeDebugLocator(progressLocator),
+      reason: progressLocator?.blockId ? 'progress-title-mismatch' : 'no-progress',
+    });
     window.scrollTo({ behavior: 'auto', top: 0 });
   }, [
     currentTitleId,
@@ -2263,7 +2427,7 @@ const ReaderScrollContent = ({
       if (timer) {
         window.clearTimeout(timer);
       }
-      timer = window.setTimeout(saveScrollLocator, 180);
+      timer = window.setTimeout(() => saveScrollLocator(undefined, 'scroll-event'), 180);
     };
 
     window.addEventListener('scroll', scheduleSave, { passive: true });
@@ -2375,6 +2539,7 @@ const ReaderPagedContent = ({
     noteEditorState,
   } = useReaderAnnotationActions({ bookId, clearSelection, selectionMenuState });
   const pendingLocatorRef = useRef<ReaderLocator | null>(null);
+  const lastLayoutLogKeyRef = useRef('');
   const visiblePagesRef = useRef(visiblePages);
   const measureFrameRef = useRef<number | null>(null);
   const contentMeasureFrameRef = useRef<number | null>(null);
@@ -2445,9 +2610,24 @@ const ReaderPagedContent = ({
   }, [clearSelection, copySelection, showCopyToast]);
 
   const addCurrentPageBookmark = useCallback(() => {
-    if (!bookId || visiblePages !== 2) return;
+    if (!bookId || visiblePages !== 2) {
+      debugReader('paged.bookmark-add-skip', {
+        bookId,
+        pageNum,
+        reason: !bookId ? 'missing-book-id' : 'not-two-page-mode',
+        visiblePages,
+      });
+      return;
+    }
     const bookmark = getReaderBookmarkForPage(bookId, pageNum);
-    if (bookmark) return;
+    if (bookmark) {
+      debugReader('paged.bookmark-add-skip', {
+        bookmarkId: bookmark.id,
+        pageNum,
+        reason: 'already-exists',
+      });
+      return;
+    }
 
     const draft = createPageBookmarkDraft({
       flow: flowRef.current,
@@ -2456,7 +2636,24 @@ const ReaderPagedContent = ({
       viewport: viewportRef.current,
     });
     if (draft) {
+      debugReader('paged.bookmark-add', {
+        draft: {
+          blockId: draft.blockId,
+          page: draft.page,
+          startOffset: draft.startOffset,
+          textHead: draft.text.slice(0, 60),
+          titleId: draft.titleId,
+        },
+        layout,
+      });
       saveReaderBookmark(bookId, draft);
+    } else {
+      debugReader('paged.bookmark-add-empty-draft', {
+        hasFlow: Boolean(flowRef.current),
+        hasViewport: Boolean(viewportRef.current),
+        layout,
+        pageNum,
+      });
     }
   }, [bookId, layout, pageNum, visiblePages]);
 
@@ -2464,6 +2661,10 @@ const ReaderPagedContent = ({
     if (!bookId || visiblePages !== 2) return;
     const bookmark = getReaderBookmarkForPage(bookId, pageNum);
     if (bookmark) {
+      debugReader('paged.bookmark-remove', {
+        bookmarkId: bookmark.id,
+        pageNum,
+      });
       deleteReaderAnnotation(bookId, bookmark.id);
       return;
     }
@@ -2513,6 +2714,18 @@ const ReaderPagedContent = ({
     if (titleIdSequence.length === 0) {
       return { currentTitleId: undefined as number | undefined, currentLocalPage: 0 };
     }
+    const pendingLocator = pendingLocatorRef.current;
+    const pendingTargetTitleId =
+      !pendingLocator || (bookId && pendingLocator.bookId !== bookId)
+        ? undefined
+        : getLocatorTargetTitleId(pendingLocator, blocks);
+    if (pendingTargetTitleId !== undefined && titleIdSequence.includes(pendingTargetTitleId)) {
+      const start = chapterStartPages[pendingTargetTitleId] ?? textSyntaxTree.titleIdPage[pendingTargetTitleId] ?? 0;
+      return {
+        currentLocalPage: Math.max(0, pageNum - start),
+        currentTitleId: pendingTargetTitleId,
+      };
+    }
     if (!hasCompleteChapterStartPages(titleIdSequence, chapterStartPages)) {
       const fallbackTitleId =
         getReaderProgressTitleId(bookId, textSyntaxTree) ?? getTitleIdByPage(textSyntaxTree, pageNum);
@@ -2539,7 +2752,7 @@ const ReaderPagedContent = ({
       }
     }
     return { currentTitleId: titleId, currentLocalPage: localPage };
-  }, [bookId, pageNum, textSyntaxTree, titleIdSequence, chapterStartPages, totalPage]);
+  }, [blocks, bookId, pageNum, textSyntaxTree, titleIdSequence, chapterStartPages, totalPage]);
 
   const currentChapterBlocks = useMemo(() => {
     if (currentTitleId === undefined) return [] as ReaderBlock[];
@@ -2555,6 +2768,39 @@ const ReaderPagedContent = ({
     ? Math.min(Math.max(0, currentLocalPage), Math.max(0, currentChapterPagination.chapterPageCount - 1))
     : Math.max(0, currentLocalPage);
   const chapterStartsComplete = hasCompleteChapterStartPages(titleIdSequence, chapterStartPages);
+
+  useEffect(() => {
+    debugReader('paged.context', {
+      bookId,
+      chapterPaginations: summarizeDebugPaginationMap(chapterPaginations),
+      chapterStarts: summarizeDebugChapterStarts(titleIdSequence, chapterStartPages),
+      chapterStartsComplete,
+      currentLocalPage,
+      currentTitleId,
+      layout,
+      navigationTarget,
+      pageNum,
+      safeLocalPage,
+      totalPage,
+      tree: summarizeDebugTree(textSyntaxTree),
+      visiblePages,
+    });
+  }, [
+    bookId,
+    chapterPaginations,
+    chapterStartPages,
+    chapterStartsComplete,
+    currentLocalPage,
+    currentTitleId,
+    layout,
+    navigationTarget,
+    pageNum,
+    safeLocalPage,
+    textSyntaxTree,
+    titleIdSequence,
+    totalPage,
+    visiblePages,
+  ]);
 
   const getCurrentLocator = useCallback((): ReaderLocator | undefined => {
     if (!bookId) return undefined;
@@ -2572,22 +2818,56 @@ const ReaderPagedContent = ({
     const locator = getCurrentLocator();
     if (locator) {
       pendingLocatorRef.current = locator;
+      debugReader('paged.remember-current-locator', {
+        locator: summarizeDebugLocator(locator),
+        pageNum: getPageNum(),
+      });
+    } else {
+      debugReader('paged.remember-current-locator-empty', {
+        pageNum: getPageNum(),
+        tree: summarizeDebugTree(getTextSyntaxTree()),
+      });
     }
   }, [getCurrentLocator]);
 
   const runMeasureLayout = useCallback(() => {
     const viewport = viewportRef.current;
     const flow = flowRef.current;
-    if (!viewport || !flow) return;
+    if (!viewport || !flow) {
+      debugReader('paged.measure-layout-skip', {
+        hasFlow: Boolean(flow),
+        hasViewport: Boolean(viewport),
+        reason: 'missing-element',
+      });
+      return;
+    }
 
     const viewportWidth = viewport.clientWidth;
     const viewportHeight = viewport.clientHeight;
-    if (viewportWidth < 30 || viewportHeight < 30) return;
+    if (viewportWidth < 30 || viewportHeight < 30) {
+      debugReader('paged.measure-layout-skip', {
+        reason: 'small-viewport',
+        viewportHeight,
+        viewportWidth,
+      });
+      return;
+    }
 
     const pageGap = visiblePages === 2 ? Math.floor(viewportWidth * getStoredReaderPageGapRatio()) : 0;
     const pageWidth = visiblePages === 2 ? Math.floor((viewportWidth - pageGap) / 2) : viewportWidth;
     const pageStep = pageWidth + pageGap;
     const nextLayout: ReaderLayout = { pageWidth, pageGap, pageStep, pageHeight: viewportHeight };
+    const layoutLogKey = `${pageWidth}|${pageGap}|${pageStep}|${viewportHeight}|${visiblePages}`;
+    if (lastLayoutLogKeyRef.current !== layoutLogKey) {
+      lastLayoutLogKeyRef.current = layoutLogKey;
+      debugReader('paged.measure-layout', {
+        flowScrollWidth: flow.scrollWidth,
+        nextLayout,
+        viewportHeight,
+        viewportWidth,
+        visiblePages,
+      });
+    }
 
     flow.style.setProperty('--reader-page-width', `${pageWidth}px`);
     flow.style.setProperty('--reader-page-gap', `${pageGap}px`);
@@ -2611,7 +2891,14 @@ const ReaderPagedContent = ({
   }, [visiblePages]);
 
   const scheduleMeasureLayout = useCallback(
-    ({ includeSettledPass = false, rememberLocator = false } = {}) => {
+    ({ includeSettledPass = false, rememberLocator = false, source = 'unknown' } = {}) => {
+      debugReader('paged.schedule-layout-measure', {
+        includeSettledPass,
+        pageNum: getPageNum(),
+        pendingLocator: summarizeDebugLocator(pendingLocatorRef.current),
+        rememberLocator,
+        source,
+      });
       if (rememberLocator && !pendingLocatorRef.current) {
         rememberCurrentLocator();
       }
@@ -2645,6 +2932,11 @@ const ReaderPagedContent = ({
 
   const scheduleContentPaginationMeasure = useCallback(() => {
     if (currentTitleId === undefined) return;
+    debugReader('paged.schedule-content-pagination-measure', {
+      currentChapterImageCount,
+      currentTitleId,
+      pageNum,
+    });
     clearChapterPaginationCache(bookId, currentTitleId);
     setChapterPaginations((prev) => {
       if (!prev.has(currentTitleId)) return prev;
@@ -2659,45 +2951,59 @@ const ReaderPagedContent = ({
     contentMeasureFrameRef.current = window.requestAnimationFrame(() => {
       contentMeasureFrameRef.current = null;
       setContentMeasureRevision((revision) => revision + 1);
-      scheduleMeasureLayout({ includeSettledPass: true });
+      scheduleMeasureLayout({ includeSettledPass: true, source: 'content-pagination-measure' });
     });
-  }, [bookId, currentTitleId, scheduleMeasureLayout]);
+  }, [bookId, currentChapterImageCount, currentTitleId, pageNum, scheduleMeasureLayout]);
 
   const fingerprintRef = useRef(fingerprint);
 
   // 章节级测量：currentTitleId / fingerprint / layout.pageStep / 当前章 blocks 变化时
   // fingerprint 变化时同步在本 effect 内清空旧分页 state，避免 useEffect 异步清空与 layoutEffect 测量之间的时序竞争
   useLayoutEffect(() => {
-    if (currentTitleId === undefined) return;
-    if (layout.pageStep <= 0) return;
+    if (currentTitleId === undefined) {
+      debugReader('paged.chapter-measure-skip', {
+        reason: 'missing-current-title',
+      });
+      return;
+    }
+    if (layout.pageStep <= 0) {
+      debugReader('paged.chapter-measure-skip', {
+        currentTitleId,
+        layout,
+        reason: 'invalid-page-step',
+      });
+      return;
+    }
     const flow = flowRef.current;
-    if (!flow) return;
+    if (!flow) {
+      debugReader('paged.chapter-measure-skip', {
+        currentTitleId,
+        reason: 'missing-flow',
+      });
+      return;
+    }
 
     const fingerprintChanged = !chapterFingerprintEqual(fingerprintRef.current, fingerprint);
     if (fingerprintChanged) {
       fingerprintRef.current = fingerprint;
     }
 
-    const restoreCachedPaginationBase = fingerprintChanged
-      ? () => {
-          const base = new Map<number, ChapterPagination>();
-          for (const tid of titleIdSequence) {
-            const tidCached = getCachedChapterPagination(bookId, tid, fingerprint);
-            if (tidCached) base.set(tid, tidCached);
-          }
-          return base;
-        }
-      : undefined;
-
     if (!areChapterImagesReadyForPagination(flow, currentChapterImageCount)) {
+      debugReader('paged.chapter-measure-images-pending', {
+        currentChapterImageCount,
+        currentTitleId,
+        fingerprint,
+        fingerprintChanged,
+        flowScrollWidth: flow.scrollWidth,
+        layout,
+      });
       clearChapterPaginationCache(bookId, currentTitleId);
       setChapterPaginations((prev) => {
         const current = prev.get(currentTitleId);
         if (!current || current.chapterPageCount > 1 || currentChapterImageCount <= 1) {
-          if (!fingerprintChanged) return prev;
-          return prev.size === 0 ? prev : restoreCachedPaginationBase ? restoreCachedPaginationBase() : new Map();
+          return fingerprintChanged ? (prev.size === 0 ? prev : new Map()) : prev;
         }
-        const next = restoreCachedPaginationBase ? restoreCachedPaginationBase() : new Map(prev);
+        const next = fingerprintChanged ? new Map<number, ChapterPagination>() : new Map(prev);
         next.delete(currentTitleId);
         return next;
       });
@@ -2706,9 +3012,21 @@ const ReaderPagedContent = ({
 
     const cached = getCachedChapterPagination(bookId, currentTitleId, fingerprint);
     if (cached) {
+      debugReader('paged.chapter-measure-cache-hit', {
+        cached: {
+          blockCount: Object.keys(cached.blockIdLocalPage).length,
+          chapterPageCount: cached.chapterPageCount,
+          estimated: cached.estimated,
+        },
+        currentTitleId,
+        fingerprint,
+        fingerprintChanged,
+        flowScrollWidth: flow.scrollWidth,
+        layout,
+      });
       setChapterPaginations((prev) => {
         if (!fingerprintChanged && prev.get(currentTitleId) === cached) return prev;
-        const base = restoreCachedPaginationBase ? restoreCachedPaginationBase() : new Map(prev);
+        const base = fingerprintChanged ? new Map<number, ChapterPagination>() : new Map(prev);
         base.set(currentTitleId, cached);
         return base;
       });
@@ -2717,17 +3035,33 @@ const ReaderPagedContent = ({
 
     const result = measureChapterPagination(flow, layout.pageStep);
     if (!result) {
+      debugReader('paged.chapter-measure-empty', {
+        currentTitleId,
+        fingerprint,
+        fingerprintChanged,
+        flowScrollWidth: flow.scrollWidth,
+        layout,
+      });
       if (fingerprintChanged) {
-        setChapterPaginations((prev) => {
-          if (prev.size === 0) return prev;
-          return restoreCachedPaginationBase ? restoreCachedPaginationBase() : new Map();
-        });
+        setChapterPaginations((prev) => (prev.size === 0 ? prev : new Map()));
       }
       return;
     }
+    debugReader('paged.chapter-measure-result', {
+      currentTitleId,
+      fingerprint,
+      fingerprintChanged,
+      flowScrollWidth: flow.scrollWidth,
+      layout,
+      result: {
+        blockCount: Object.keys(result.blockIdLocalPage).length,
+        chapterPageCount: result.chapterPageCount,
+        estimated: result.estimated,
+      },
+    });
     setCachedChapterPagination(bookId, currentTitleId, fingerprint, result);
     setChapterPaginations((prev) => {
-      const base = restoreCachedPaginationBase ? restoreCachedPaginationBase() : new Map(prev);
+      const base = fingerprintChanged ? new Map<number, ChapterPagination>() : new Map(prev);
       base.set(currentTitleId, result);
       return base;
     });
@@ -2743,9 +3077,31 @@ const ReaderPagedContent = ({
 
   // 同步章节级分页结果到 textSyntaxTree（消费侧依赖）
   useEffect(() => {
-    if (!textSyntaxTree.rawText) return;
-    if (titleIdSequence.length === 0) return;
-    if (!chapterStartsComplete) return;
+    if (!textSyntaxTree.rawText) {
+      debugReader('paged.tree-sync-skip', {
+        reason: 'empty-raw-text',
+      });
+      return;
+    }
+    if (titleIdSequence.length === 0) {
+      debugReader('paged.tree-sync-skip', {
+        reason: 'empty-title-sequence',
+      });
+      return;
+    }
+    if (chapterPaginations.size === 0) {
+      debugReader('paged.tree-sync-skip', {
+        reason: 'empty-chapter-pagination',
+      });
+      return;
+    }
+    if (!chapterStartsComplete) {
+      debugReader('paged.tree-sync-skip', {
+        chapterStarts: summarizeDebugChapterStarts(titleIdSequence, chapterStartPages),
+        reason: 'incomplete-chapter-starts',
+      });
+      return;
+    }
 
     const blockIdPage: Record<string, number> = {};
     const blockIdPageEnd: Record<string, number> = {};
@@ -2766,11 +3122,23 @@ const ReaderPagedContent = ({
     });
     const pageTitleId = buildPageTitleId(totalPage + 1, titleIdPage);
     if (titleIdSequence.length > 1 && pageTitleId.length <= 1) {
+      debugReader('paged.tree-sync-skip', {
+        reason: 'invalid-page-title-id',
+        titleIdPage,
+        totalPage,
+      });
       return;
     }
 
     const currentTree = getTextSyntaxTree();
-    if (currentTree.rawText !== textSyntaxTree.rawText || currentTree.blocks !== textSyntaxTree.blocks) return;
+    if (currentTree.rawText !== textSyntaxTree.rawText || currentTree.blocks !== textSyntaxTree.blocks) {
+      debugReader('paged.tree-sync-skip', {
+        currentTree: summarizeDebugTree(currentTree),
+        reason: 'stale-tree-reference',
+        renderTree: summarizeDebugTree(textSyntaxTree),
+      });
+      return;
+    }
 
     const shouldUpdate =
       currentTree.totalPage !== totalPage ||
@@ -2780,6 +3148,14 @@ const ReaderPagedContent = ({
       hasArrayChanged(currentTree.pageTitleId, pageTitleId);
     if (!shouldUpdate) return;
 
+    debugReader('paged.tree-sync-update', {
+      blockIdPageCount: Object.keys(blockIdPage).length,
+      blockIdPageEndCount: Object.keys(blockIdPageEnd).length,
+      currentTree: summarizeDebugTree(currentTree),
+      pageTitleIdLength: pageTitleId.length,
+      titleIdPageCount: Object.keys(titleIdPage).length,
+      totalPage,
+    });
     setTextSyntaxTree({
       ...currentTree,
       totalPage,
@@ -2803,33 +3179,87 @@ const ReaderPagedContent = ({
   useEffect(() => {
     const locator = pendingLocatorRef.current;
     if (!locator) return;
-    if (bookId && locator.bookId !== bookId) return;
-    if (titleIdSequence.length === 0) return;
+    debugReader('paged.pending-locator-check', {
+      bookId,
+      chapterStarts: summarizeDebugChapterStarts(titleIdSequence, chapterStartPages),
+      chapterStartsComplete,
+      currentTitleId,
+      locator: summarizeDebugLocator(locator),
+      pageNum: getPageNum(),
+      totalPage,
+    });
+    if (bookId && locator.bookId !== bookId) {
+      debugReader('paged.pending-locator-skip', {
+        bookId,
+        locator: summarizeDebugLocator(locator),
+        reason: 'book-mismatch',
+      });
+      return;
+    }
+    if (titleIdSequence.length === 0) {
+      debugReader('paged.pending-locator-skip', {
+        locator: summarizeDebugLocator(locator),
+        reason: 'empty-title-sequence',
+      });
+      return;
+    }
 
     const block = locator.blockId ? blocks.find((b) => b.id === locator.blockId) : undefined;
     const targetTitleId = block?.titleId ?? locator.titleId;
     if (targetTitleId === undefined || !blocksByTitleId.has(targetTitleId)) {
+      debugReader('paged.pending-locator-clear', {
+        block: summarizeDebugBlock(block),
+        locator: summarizeDebugLocator(locator),
+        reason: 'missing-target-title',
+        targetTitleId,
+      });
       pendingLocatorRef.current = null;
       return;
     }
 
     if (currentTitleId !== targetTitleId) {
       const targetStart = chapterStartPages[targetTitleId];
+      debugReader('paged.pending-locator-target-chapter', {
+        currentTitleId,
+        locator: summarizeDebugLocator(locator),
+        pageNum: getPageNum(),
+        targetStart,
+        targetTitleId,
+      });
       if (targetStart !== undefined && getPageNum() !== targetStart) {
         setPageNum(targetStart);
       }
       // 空卷标题章节会被合并到下一非空章节渲染，自身永远不会成为 currentTitleId；跳一次即清理 pending，避免反复触发
       const targetBlocks = blocksByTitleId.get(targetTitleId) ?? [];
       if (isEmptyHeadingTitleBlocks(targetBlocks)) {
+        debugReader('paged.pending-locator-clear', {
+          locator: summarizeDebugLocator(locator),
+          reason: 'empty-heading-target-title',
+          targetTitleId,
+        });
         pendingLocatorRef.current = null;
       }
       return;
     }
 
-    if (!chapterPaginations.has(currentTitleId)) return;
+    if (!chapterPaginations.has(currentTitleId)) {
+      debugReader('paged.pending-locator-wait-pagination', {
+        currentTitleId,
+        locator: summarizeDebugLocator(locator),
+        paginationMap: summarizeDebugPaginationMap(chapterPaginations),
+      });
+      return;
+    }
 
     const targetPage = resolveReaderLocatorPage(locator, getTextSyntaxTree());
     pendingLocatorRef.current = null;
+    debugReader('paged.pending-locator-resolved', {
+      currentTitleId,
+      locator: summarizeDebugLocator(locator),
+      pageNum: getPageNum(),
+      targetPage,
+      tree: summarizeDebugTree(getTextSyntaxTree()),
+    });
     if (getPageNum() !== targetPage) {
       setPageNum(targetPage);
     }
@@ -2849,8 +3279,10 @@ const ReaderPagedContent = ({
     blocksByTitleId,
     chapterPaginations,
     chapterStartPages,
+    chapterStartsComplete,
     currentTitleId,
     titleIdSequence,
+    totalPage,
     visiblePages,
   ]);
 
@@ -2858,6 +3290,11 @@ const ReaderPagedContent = ({
   useLayoutEffect(() => {
     if (!bookId || !textSyntaxTree.rawText) return;
     pendingLocatorRef.current = getReaderProgress(bookId) || null;
+    debugReader('paged.initial-pending-locator', {
+      locator: summarizeDebugLocator(pendingLocatorRef.current),
+      pageNum: getPageNum(),
+      tree: summarizeDebugTree(getTextSyntaxTree()),
+    });
   }, [bookId, textSyntaxTree.rawText]);
 
   // 搜索/目录跳转：navigationTarget 转 pendingLocator，由统一定位逻辑兜底跨章
@@ -2872,6 +3309,11 @@ const ReaderPagedContent = ({
       block && typeof navigationTarget.matchStart === 'number' && Number.isFinite(navigationTarget.matchStart)
         ? Math.min(Math.max(navigationTarget.matchStart / Math.max(block.text.length, 1), 0), 1)
         : undefined;
+    debugReader('paged.navigation-target-to-pending', {
+      block: summarizeDebugBlock(block),
+      navigationTarget,
+      ratio: summarizeDebugNumber(ratio),
+    });
     pendingLocatorRef.current = {
       bookId: bookId ?? '',
       page: navigationTarget.page ?? 0,
@@ -2887,6 +3329,10 @@ const ReaderPagedContent = ({
     if (totalPage <= 0) return;
     const currentPage = getPageNum();
     if (currentPage > totalPage) {
+      debugReader('paged.total-page-clamp', {
+        currentPage,
+        totalPage,
+      });
       setPageNum(totalPage);
     }
   }, [totalPage]);
@@ -2894,17 +3340,22 @@ const ReaderPagedContent = ({
   // visiblePages / blocks 改变时重新测量
   useLayoutEffect(() => {
     if (visiblePagesRef.current !== visiblePages) {
+      debugReader('paged.visible-pages-change', {
+        from: visiblePagesRef.current,
+        pageNum: getPageNum(),
+        to: visiblePages,
+      });
       rememberCurrentLocator();
       visiblePagesRef.current = visiblePages;
     }
-    scheduleMeasureLayout();
+    scheduleMeasureLayout({ source: 'visible-pages-or-blocks' });
   }, [blocks, rememberCurrentLocator, scheduleMeasureLayout, visiblePages]);
 
   useEffect(() => {
     const viewport = viewportRef.current;
     if (!viewport || typeof ResizeObserver === 'undefined') return;
     const observer = new ResizeObserver(() => {
-      scheduleMeasureLayout({ rememberLocator: true });
+      scheduleMeasureLayout({ rememberLocator: true, source: 'resize-observer' });
     });
     observer.observe(viewport);
     return () => observer.disconnect();
@@ -2915,7 +3366,7 @@ const ReaderPagedContent = ({
     let cancelled = false;
     document.fonts.ready.then(() => {
       if (!cancelled) {
-        scheduleMeasureLayout({ rememberLocator: true });
+        scheduleMeasureLayout({ rememberLocator: true, source: 'fonts-ready' });
       }
     });
     return () => {
@@ -2925,7 +3376,7 @@ const ReaderPagedContent = ({
 
   useEffect(() => {
     const refreshLayout = () => {
-      scheduleMeasureLayout({ includeSettledPass: true, rememberLocator: true });
+      scheduleMeasureLayout({ includeSettledPass: true, rememberLocator: true, source: 'reader-setting-change' });
     };
     window.addEventListener(READER_SETTING_CHANGE_EVENT, refreshLayout);
     return () => {
@@ -3192,15 +3643,44 @@ export const DesktopBookDetail = (): React.JSX.Element => {
 
   useEffect(() => {
     const updateReaderSettings = () => {
-      setPageTurnEffect(getStoredReaderPageTurnEffect());
-      setReadingMode(getStoredReaderReadingMode());
-      setScrollPaddingX(getStoredReaderScrollPaddingX());
+      const nextPageTurnEffect = getStoredReaderPageTurnEffect();
+      const nextReadingMode = getStoredReaderReadingMode();
+      const nextScrollPaddingX = getStoredReaderScrollPaddingX();
+      debugReader('desktop.settings-change', {
+        current: {
+          pageTurnEffect,
+          readingMode,
+          scrollPaddingX,
+        },
+        pageNum: getPageNum(),
+        progress: summarizeDebugLocator(getReaderProgress(id || undefined)),
+        stored: {
+          pageTurnEffect: nextPageTurnEffect,
+          readingMode: nextReadingMode,
+          scrollPaddingX: nextScrollPaddingX,
+        },
+        tree: summarizeDebugTree(getTextSyntaxTree()),
+      });
+      setPageTurnEffect(nextPageTurnEffect);
+      setReadingMode(nextReadingMode);
+      setScrollPaddingX(nextScrollPaddingX);
     };
     window.addEventListener(READER_SETTING_CHANGE_EVENT, updateReaderSettings);
     return () => {
       window.removeEventListener(READER_SETTING_CHANGE_EVENT, updateReaderSettings);
     };
-  }, []);
+  }, [id, pageTurnEffect, readingMode, scrollPaddingX]);
+
+  useEffect(() => {
+    debugReader('desktop.mode-context', {
+      pageNum,
+      progress: summarizeDebugLocator(getReaderProgress(id || undefined)),
+      readerNavigationTarget,
+      readingMode,
+      scrollTitleId,
+      tree: summarizeDebugTree(textSyntaxTree),
+    });
+  }, [id, pageNum, readerNavigationTarget, readingMode, scrollTitleId, textSyntaxTree]);
 
   useLayoutEffect(() => {
     if (readingMode !== 'paged') return;
@@ -3209,7 +3689,14 @@ export const DesktopBookDetail = (): React.JSX.Element => {
 
   useEffect(() => {
     if (readingMode !== 'scroll') return;
-    setScrollTitleId(getScrollInitialTitleId(id || undefined, pageNum, textSyntaxTree));
+    const nextScrollTitleId = getScrollInitialTitleId(id || undefined, pageNum, textSyntaxTree);
+    debugReader('desktop.scroll-initial-title', {
+      nextScrollTitleId,
+      pageNum,
+      progress: summarizeDebugLocator(getReaderProgress(id || undefined)),
+      tree: summarizeDebugTree(textSyntaxTree),
+    });
+    setScrollTitleId(nextScrollTitleId);
   }, [
     id,
     pageNum,
@@ -3229,6 +3716,11 @@ export const DesktopBookDetail = (): React.JSX.Element => {
       ? readerNavigationTarget.titleId
       : block?.titleId;
     if (isValidTitleId(textSyntaxTree, targetTitleId)) {
+      debugReader('desktop.scroll-navigation-title', {
+        block: summarizeDebugBlock(block),
+        readerNavigationTarget,
+        targetTitleId,
+      });
       setScrollTitleId(targetTitleId);
     }
   }, [
@@ -3244,6 +3736,10 @@ export const DesktopBookDetail = (): React.JSX.Element => {
     (targetTitleId: number) => {
       setScrollTitleId(targetTitleId);
       const targetPage = getTitlePage(textSyntaxTree, targetTitleId);
+      debugReader('desktop.navigate-scroll-title', {
+        targetPage,
+        targetTitleId,
+      });
       setReaderNavigationTarget({ page: targetPage, revision: Date.now(), titleId: targetTitleId });
       if (getPageNum() !== targetPage) {
         setPageNum(targetPage);
@@ -3266,7 +3762,15 @@ export const DesktopBookDetail = (): React.JSX.Element => {
   const scrollNavigationTitleId = isValidTitleId(textSyntaxTree, readerNavigationTarget.titleId)
     ? readerNavigationTarget.titleId
     : scrollNavigationBlock?.titleId;
-  const hasActiveScrollNavigation = readerNavigationTarget.revision > 0 && scrollNavigationTitleId === scrollTitleId;
+  const fallbackScrollTitleId = getScrollInitialTitleId(id || undefined, pageNum, textSyntaxTree);
+  const effectiveScrollTitleId =
+    isScrollMode && isValidTitleId(textSyntaxTree, scrollNavigationTitleId)
+      ? scrollNavigationTitleId
+      : isScrollMode
+        ? fallbackScrollTitleId
+        : scrollTitleId;
+  const hasActiveScrollNavigation =
+    readerNavigationTarget.revision > 0 && scrollNavigationTitleId === effectiveScrollTitleId;
   const scrollTargetBlockId = hasActiveScrollNavigation ? readerNavigationTarget.blockId : undefined;
   const scrollTargetBlockRatio =
     hasActiveScrollNavigation &&
@@ -3325,7 +3829,7 @@ export const DesktopBookDetail = (): React.JSX.Element => {
               targetBlockId={scrollTargetBlockId}
               targetBlockRatio={scrollTargetBlockRatio}
               textSyntaxTree={textSyntaxTree}
-              titleId={scrollTitleId}
+              titleId={effectiveScrollTitleId}
             />
           </div>
         </div>

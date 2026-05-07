@@ -101,6 +101,90 @@
   transition: transform 0.18s ease;
 }
 
+.reader-page-bookmark-zone {
+  --reader-page-bookmark-wrapper-height: 70px;
+  --reader-page-bookmark-action-width: 150px;
+  --reader-page-bookmark-icon-top: 0px;
+  --reader-page-bookmark-icon-right: 28px;
+
+  height: var(--reader-page-bookmark-wrapper-height);
+  left: 0;
+  overflow: hidden;
+  position: absolute;
+  right: 0;
+  top: 0;
+  width: 100%;
+  z-index: 20;
+}
+
+.reader-page-bookmark-action-zone {
+  height: 100%;
+  margin-left: auto;
+  position: relative;
+  transform: translateY(-100%);
+  transition: transform 0.3s ease;
+  width: var(--reader-page-bookmark-action-width);
+  cursor: pointer;
+}
+
+.reader-page-bookmark-zone:hover .reader-page-bookmark-action-zone,
+.reader-page-bookmark-action-zone.is-active {
+  transform: translateY(0);
+}
+
+.reader-page-bookmark-button {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: transparent;
+  color: rgba(117, 119, 120, 0.42);
+  cursor: pointer;
+  padding: 0;
+  position: absolute;
+  inset: 0;
+}
+
+.reader-page-bookmark-button.is-active {
+  color: #0097ff;
+}
+
+.reader-page-bookmark-button svg {
+  width: 15px;
+  height: 46px;
+  display: block;
+  position: absolute;
+  top: var(--reader-page-bookmark-icon-top);
+  right: var(--reader-page-bookmark-icon-right);
+}
+
+.reader-page-bookmark-hover-fill {
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.reader-page-bookmark-action-zone:hover .reader-page-bookmark-hover-fill {
+  opacity: 1;
+}
+
+.reader-page-bookmark-tooltip {
+  color: #3a3c3e;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+  opacity: 0;
+  pointer-events: none;
+  position: absolute;
+  left: 14px;
+  text-align: right;
+  top: 26px;
+  transition: all 0.3s;
+  white-space: nowrap;
+}
+
+.reader-page-bookmark-action-zone:hover .reader-page-bookmark-tooltip {
+  opacity: 1;
+}
+
 .reader-scroll-mode-page {
   min-height: 100vh;
 }
@@ -265,6 +349,8 @@
 }
 
 .reader-selection-menu-item {
+  --reader-selection-preview-color: currentColor;
+
   width: 56px;
   height: 62px;
   border: 0;
@@ -287,16 +373,36 @@
   white-space: nowrap;
 }
 
-.reader-selection-menu-item svg {
+.reader-selection-menu-icon {
   width: 22px;
   height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.reader-selection-menu-icon svg {
+  width: var(--reader-selection-menu-icon-size, 22px);
+  height: var(--reader-selection-menu-icon-size, 22px);
   display: block;
 }
 
-.reader-selection-menu-item.second-item svg {
-  width: 19px;
-  height: 19px;
-  display: block;
+.reader-selection-menu .reader-selection-preview-fill,
+.reader-selection-menu .reader-selection-preview-stroke {
+  transition:
+    fill 140ms ease,
+    fill-opacity 140ms ease,
+    stroke 140ms ease;
+}
+
+.reader-selection-menu-item:hover .reader-selection-preview-fill {
+  fill: var(--reader-selection-preview-color);
+  fill-opacity: 0.42;
+}
+
+.reader-selection-menu-item:hover .reader-selection-preview-stroke {
+  stroke: var(--reader-selection-preview-color);
 }
 
 .reader-selection-menu-item:hover {

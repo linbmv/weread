@@ -11,6 +11,9 @@ export interface ReaderLocator {
   textBefore?: string;
   textAfter?: string;
   globalProgress?: number;
+  readPercent?: number;
+  totalPageCount?: number;
+  visiblePages?: number;
   readingMode?: 'paged' | 'scroll';
   updatedAt: number;
 }
@@ -24,6 +27,21 @@ const clampPage = (page: number, totalPage: number): number => {
 const clampRatio = (value: number): number => {
   if (!Number.isFinite(value)) return 0;
   return Math.min(Math.max(value, 0), 1);
+};
+
+const normalizeVisiblePages = (value?: number): number => {
+  if (!Number.isFinite(value)) return 1;
+  return Math.max(1, Math.floor(value || 1));
+};
+
+const getPagedReadPercent = (page: number, totalPage: number, visiblePages = 1): number => {
+  const totalPageCount = Math.max(totalPage + 1, 1);
+  const readPages = Math.min(Math.max(page, 0) + normalizeVisiblePages(visiblePages), totalPageCount);
+  return Math.floor((readPages / totalPageCount) * 100);
+};
+
+const getScrollReadPercent = (globalProgress: number): number => {
+  return Math.floor(clampRatio(globalProgress) * 100);
 };
 
 const isBrowser = (): boolean => typeof window !== 'undefined' && typeof window.localStorage !== 'undefined';
@@ -117,7 +135,7 @@ const findBlockByPage = (textSyntaxTree: TextSyntaxTree, page: number): ReaderBl
   return nearestBlock || blocks[0];
 };
 
-const getScrollAnchorY = (): number => {
+export const getReaderScrollAnchorY = (): number => {
   if (typeof window === 'undefined') return 0;
   return Math.min(Math.max(window.innerHeight * 0.28, 120), 220);
 };
@@ -171,18 +189,22 @@ export const createReaderLocator = ({
   bookId,
   page,
   textSyntaxTree,
+  visiblePages,
 }: {
   bookId: string;
   page: number;
   textSyntaxTree: TextSyntaxTree;
+  visiblePages?: number;
 }): ReaderLocator => {
   const safePage = clampPage(page, textSyntaxTree.totalPage || 0);
+  const normalizedVisiblePages = normalizeVisiblePages(visiblePages);
   const block = findBlockByPage(textSyntaxTree, safePage);
   const startPage = block ? (textSyntaxTree.blockIdPage[block.id] ?? safePage) : safePage;
   const endPage = block ? (getBlockPageEnd(textSyntaxTree, block.id) ?? startPage) : startPage;
   const blockPageOffset = block ? clampPage(safePage - startPage, endPage - startPage) : undefined;
   const blockScrollRatio = block ? clampRatio((blockPageOffset ?? 0) / Math.max(endPage - startPage, 1)) : undefined;
   const globalProgress = textSyntaxTree.totalPage > 0 ? safePage / textSyntaxTree.totalPage : 0;
+  const totalPageCount = Math.max((textSyntaxTree.totalPage || 0) + 1, 1);
 
   return {
     bookId,
@@ -191,9 +213,12 @@ export const createReaderLocator = ({
     blockScrollRatio,
     globalProgress,
     page: safePage,
+    readPercent: getPagedReadPercent(safePage, textSyntaxTree.totalPage || 0, normalizedVisiblePages),
     readingMode: 'paged',
     titleId: block?.titleId,
+    totalPageCount,
     updatedAt: Date.now(),
+    visiblePages: normalizedVisiblePages,
     ...getBlockTextQuote(block),
   };
 };
@@ -210,22 +235,25 @@ export const createReaderScrollLocator = ({
   textSyntaxTree: TextSyntaxTree;
 }): ReaderLocator | undefined => {
   if (!contentElement) return undefined;
-  const resolvedAnchorY = typeof anchorY === 'number' && Number.isFinite(anchorY) ? anchorY : getScrollAnchorY();
+  const resolvedAnchorY = typeof anchorY === 'number' && Number.isFinite(anchorY) ? anchorY : getReaderScrollAnchorY();
   const anchor = findScrollAnchorElement(contentElement, resolvedAnchorY);
   const blockId = anchor?.element.dataset.readerBlockId;
   const block = blockId ? textSyntaxTree.blocks.find((item) => item.id === blockId) : undefined;
   if (!block) return undefined;
 
   const blockScrollRatio = clampRatio(anchor?.ratio ?? 0);
+  const globalProgress = getBlockGlobalProgress(block, textSyntaxTree, blockScrollRatio);
   return {
     blockId: block.id,
     blockPageOffset: getBlockPageOffset(block, textSyntaxTree, blockScrollRatio),
     blockScrollRatio,
     bookId,
-    globalProgress: getBlockGlobalProgress(block, textSyntaxTree, blockScrollRatio),
+    globalProgress,
     page: getBlockPage(block, textSyntaxTree, blockScrollRatio),
+    readPercent: getScrollReadPercent(globalProgress),
     readingMode: 'scroll',
     titleId: block.titleId,
+    totalPageCount: Math.max((textSyntaxTree.totalPage || 0) + 1, 1),
     updatedAt: Date.now(),
     ...getBlockTextQuote(block),
   };
@@ -266,13 +294,20 @@ export const getReaderProgress = (bookId?: string | null): ReaderLocator | undef
 export const saveReaderProgress = (locator: ReaderLocator): void => {
   if (!locator.bookId) return;
   const map = readProgressMap();
-  const previousTitleId = map[locator.bookId]?.titleId;
+  const previous = map[locator.bookId];
   map[locator.bookId] = {
     ...locator,
     updatedAt: Date.now(),
   };
   writeProgressMap(map);
-  if (previousTitleId !== locator.titleId) {
+  if (
+    !previous ||
+    previous.titleId !== locator.titleId ||
+    previous.page !== locator.page ||
+    previous.readPercent !== locator.readPercent ||
+    previous.readingMode !== locator.readingMode ||
+    previous.totalPageCount !== locator.totalPageCount
+  ) {
     syncHook.call(EVENT_NAME.SET_READER_PROGRESS);
   }
 };
