@@ -27,6 +27,7 @@ export const createEmptyReaderSearchHighlight = (): ReaderSearchHighlight => ({
 export enum EVENT_NAME {
   CLOSE_POPOVER = 'close-popover',
   OPEN_READER_MENU_SEARCH = 'open-reader-menu-search',
+  SET_READER_CONTROL_PANEL_ACTIVE = 'set-reader-control-panel-active',
   SET_CURRENT_BOOK_PAGE = 'set-current-book-page',
   SET_CURRENT_BOOK_DETAIL = 'set-current-book-detail',
   ADD_READER_PAGE_BOOKMARK = 'add-reader-page-bookmark',
@@ -58,3 +59,7 @@ export const [getReaderNavigationTarget, setReaderNavigationTarget] = createSign
 );
 
 export const [getPageNum, setPageNum] = createSignal<number>(0, { subscriber: EVENT_NAME.SET_CURRENT_BOOK_PAGE });
+
+export const [getReaderControlPanelActive, setReaderControlPanelActive] = createSignal<boolean>(false, {
+  subscriber: EVENT_NAME.SET_READER_CONTROL_PANEL_ACTIVE,
+});

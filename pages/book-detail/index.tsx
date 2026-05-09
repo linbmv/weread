@@ -14,6 +14,7 @@ import {
   EVENT_NAME,
   getCurrentBookDetail,
   getPageNum,
+  getReaderControlPanelActive,
   getReaderNavigationTarget,
   getReaderSearchHighlight,
   getTextSyntaxTree,
@@ -73,6 +74,7 @@ import { findKeywordSentenceMatches } from '@/lib/searchText';
 import { useResolvedBookImage } from '@/lib/useResolvedBookImage';
 import { releaseBookResourceUrls } from '@/lib/bookResources';
 import {
+  addReaderReadingTime,
   createReaderLocator,
   createReaderScrollLocator,
   getReaderProgress,
@@ -105,11 +107,129 @@ const ReaderPageNextIcon = (): React.JSX.Element => <OcticonChevronRight classNa
 
 type ReaderAnnotationColorMap = Record<ReaderStyleAnnotationType, string>;
 
+const READER_ACTIVE_IDLE_TIMEOUT_MS = 3 * 60 * 1000;
+
+const READER_READING_TIME_FLUSH_INTERVAL_MS = 30 * 1000;
+
 const getStoredReaderAnnotationColorMap = (): ReaderAnnotationColorMap => ({
   marker: getStoredReaderAnnotationColor('marker'),
   underline: getStoredReaderAnnotationColor('underline'),
   wave: getStoredReaderAnnotationColor('wave'),
 });
+
+const useReaderReadingTimeTracker = (bookId: string | undefined, enabled: boolean): void => {
+  const stateRef = useRef({
+    lastActiveAt: 0,
+    lastTickAt: 0,
+    running: false,
+  });
+
+  useEffect(() => {
+    if (!bookId || !enabled) return;
+
+    const hasDetachedReaderPopoverPanel = () => {
+      return Array.from(document.querySelectorAll<HTMLElement>('.reader-popover-panel')).some(
+        (element) => !element.closest('.reader-control-panel'),
+      );
+    };
+
+    const isReadingBlocked = () => getReaderControlPanelActive() || hasDetachedReaderPopoverPanel();
+
+    const flush = (now = Date.now()) => {
+      const state = stateRef.current;
+      if (!state.running || state.lastTickAt <= 0 || state.lastActiveAt <= 0) return;
+
+      const activeUntil = state.lastActiveAt + READER_ACTIVE_IDLE_TIMEOUT_MS;
+      const endAt = Math.min(now, activeUntil);
+      const duration = endAt - state.lastTickAt;
+      if (duration > 0) {
+        addReaderReadingTime(bookId, duration);
+        state.lastTickAt = endAt;
+      }
+      if (now >= activeUntil) {
+        state.running = false;
+      }
+    };
+
+    const markActivity = () => {
+      if (isReadingBlocked()) {
+        pause();
+        return;
+      }
+      const now = Date.now();
+      const state = stateRef.current;
+      if (state.running && now >= state.lastActiveAt + READER_ACTIVE_IDLE_TIMEOUT_MS) {
+        flush(now);
+      }
+      state.lastActiveAt = now;
+      if (document.visibilityState !== 'visible') return;
+      if (!state.running) {
+        state.running = true;
+        state.lastTickAt = now;
+      }
+    };
+
+    const pause = () => {
+      flush(Date.now());
+      stateRef.current.running = false;
+    };
+
+    const flushActiveReadingTime = () => {
+      if (isReadingBlocked()) {
+        pause();
+        return;
+      }
+      flush(Date.now());
+    };
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        markActivity();
+        return;
+      }
+      pause();
+    };
+
+    const onControlPanelActiveChange = () => {
+      if (isReadingBlocked()) {
+        pause();
+        return;
+      }
+      markActivity();
+    };
+
+    markActivity();
+    const timer = window.setInterval(flushActiveReadingTime, READER_READING_TIME_FLUSH_INTERVAL_MS);
+    window.addEventListener('click', markActivity, true);
+    window.addEventListener('keydown', markActivity, true);
+    window.addEventListener('pointerdown', markActivity, true);
+    window.addEventListener('scroll', markActivity, { capture: true, passive: true });
+    window.addEventListener('touchstart', markActivity, { capture: true, passive: true });
+    window.addEventListener('wheel', markActivity, { capture: true, passive: true });
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    window.addEventListener('pagehide', pause);
+    syncHook.tap(EVENT_NAME.SET_READER_CONTROL_PANEL_ACTIVE, onControlPanelActiveChange);
+
+    return () => {
+      window.clearInterval(timer);
+      pause();
+      window.removeEventListener('click', markActivity, true);
+      window.removeEventListener('keydown', markActivity, true);
+      window.removeEventListener('pointerdown', markActivity, true);
+      window.removeEventListener('scroll', markActivity, true);
+      window.removeEventListener('touchstart', markActivity, true);
+      window.removeEventListener('wheel', markActivity, true);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      window.removeEventListener('pagehide', pause);
+      syncHook.off(EVENT_NAME.SET_READER_CONTROL_PANEL_ACTIVE, onControlPanelActiveChange);
+      stateRef.current = {
+        lastActiveAt: 0,
+        lastTickAt: 0,
+        running: false,
+      };
+    };
+  }, [bookId, enabled]);
+};
 
 const isEditableSelectionTarget = (target: EventTarget | null): boolean => {
   return target instanceof Element && Boolean(target.closest('input, textarea, [contenteditable="true"]'));
@@ -3377,6 +3497,7 @@ export const DesktopBookDetail = (): React.JSX.Element => {
 
   const isScrollMode = readingMode === 'scroll';
   const isReaderReady = textSyntaxTree.rawText.length > 0 && textSyntaxTree.blocks.length > 0;
+  useReaderReadingTimeTracker(id || undefined, isReaderReady);
   const hasKnownPagedTotalPage = textSyntaxTree.totalPage > 0 || textSyntaxTree.pageTitleId.length > 0;
   const isFirstPagedPage = pageNum <= 0;
   const isLastPagedPage =
@@ -3653,7 +3774,10 @@ export const MobileBookDetail = (): React.JSX.Element => {
     };
   }, []);
 
-  if (textSyntaxTree.rawText.length === 0 || textSyntaxTree.blocks.length === 0) {
+  const isReaderReady = textSyntaxTree.rawText.length > 0 && textSyntaxTree.blocks.length > 0;
+  useReaderReadingTimeTracker(typeof id === 'string' ? id : undefined, isReaderReady);
+
+  if (!isReaderReady) {
     return (
       <div
         className="reader-user-select-disabled w-screen h-screen bg-front-bg-color-1 flex items-center justify-center"

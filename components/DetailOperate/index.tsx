@@ -8,6 +8,7 @@ import {
   getPageNum,
   getTextSyntaxTree,
   setPageNum,
+  setReaderControlPanelActive,
   setReaderNavigationTarget,
   syncHook,
 } from '@/lib/subscribe';
@@ -1376,6 +1377,7 @@ export const BookDetailOperate = (): React.JSX.Element => {
   const [renderedPanel, setRenderedPanel] = useState<ReaderControlPanelType | null>(null);
   const [panelMotion, setPanelMotion] = useState<ReaderControlPanelMotion>('enter');
   const [panelMotionId, setPanelMotionId] = useState(0);
+  const isPanelActive = Boolean(activePanel);
 
   const clearPanelCloseTimer = useCallback(() => {
     if (panelCloseTimerRef.current) {
@@ -1429,8 +1431,16 @@ export const BookDetailOperate = (): React.JSX.Element => {
   useEffect(() => {
     return () => {
       clearPanelCloseTimer();
+      setReaderControlPanelActive(false);
     };
   }, [clearPanelCloseTimer]);
+
+  useEffect(() => {
+    setReaderControlPanelActive(isPanelActive);
+    return () => {
+      setReaderControlPanelActive(false);
+    };
+  }, [isPanelActive]);
 
   useEffect(() => {
     if (!renderedPanel || panelMotion === 'exit' || panelMotion === 'idle') return;

@@ -59,6 +59,7 @@ type ImportConflictType = 'same-book' | 'same-title';
 type ImportConflictAction = 'cancel' | 'keepBoth' | 'overwrite';
 
 interface ImportConflictState {
+  bookId: string;
   fileName: string;
   fileSizeLabel: string;
   lastReadLabel: string;
@@ -188,6 +189,7 @@ const createImportConflictState = ({
   const lastReadDateLabel = `上次阅读时间 ${formatImportDate(progress?.updatedAt)}`;
   const lastReadLabel = readPercent > 0 ? `${lastReadDateLabel} (已阅读 ${readPercent}%)` : lastReadDateLabel;
   return {
+    bookId: existingBook.id,
     fileName: file.name,
     fileSizeLabel: formatBookFileSize(file.size),
     lastReadLabel,
@@ -216,6 +218,7 @@ const getImportFailureMessage = (file: File, error: unknown): string => {
 };
 
 const ImportConflictDialog = ({ state, onCancel, onConfirm }: ImportConflictDialogProps): React.JSX.Element | null => {
+  const navigate = useNavigate();
   const [applyToRemaining, setApplyToRemaining] = useState(false);
   const [keepBoth, setKeepBoth] = useState(false);
 
@@ -231,6 +234,12 @@ const ImportConflictDialog = ({ state, onCancel, onConfirm }: ImportConflictDial
   const canKeepBoth = state.type === 'same-title';
   const isCancelDisabled = canKeepBoth && keepBoth;
   const title = state.type === 'same-book' ? '检测到相同书籍' : '检测到重名书籍';
+  const bookUrl = `${ROUTE_PATH.BOOK_DETAIL}?id=${encodeURIComponent(state.bookId)}`;
+  const openExistingBook = (event: React.MouseEvent<HTMLAnchorElement>) => {
+    event.preventDefault();
+    onCancel(false);
+    navigate(bookUrl);
+  };
 
   return (
     <div className="home-import-dialog-layer" role="presentation">
@@ -241,13 +250,15 @@ const ImportConflictDialog = ({ state, onCancel, onConfirm }: ImportConflictDial
         <div className="home-import-dialog-content">
           <div>{state.title} 已经在书架中：</div>
           <div className="home-import-dialog-info">
-            <div className="home-import-dialog-file">{state.fileName}</div>
+            <a className="home-import-dialog-file" href={bookUrl} onClick={openExistingBook}>
+              {state.fileName}
+            </a>
             <div className="home-import-dialog-meta">
               {state.sourceTypeLabel} | {state.fileSizeLabel} | {state.lastReadLabel}
             </div>
           </div>
           {keepBoth ? (
-            <div className="home-import-dialog-note">将以重命名方式导入，不会修改原有书籍数据</div>
+            <div className="home-import-dialog-note">将自动重命名为 {state.title}(n)</div>
           ) : (
             <div className="home-import-dialog-warning">覆盖后，原有的阅读进度和笔记将被清除</div>
           )}

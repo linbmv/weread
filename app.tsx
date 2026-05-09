@@ -9,10 +9,7 @@ import '@khmyznikov/pwa-install';
 export const App = (): React.JSX.Element => {
   const onVisibilityChange = useCallback(() => {
     if (document.visibilityState === 'visible') {
-      console.log('Page is visible');
       resumeDB();
-    } else {
-      console.log('Page is hidden');
     }
   }, []);
   const createPwaInstall = () => {

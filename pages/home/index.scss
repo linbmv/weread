@@ -34,9 +34,13 @@
 }
 
 .home-import-dialog-file {
+  color: var(--brand-blue-color-1);
+  cursor: pointer;
+  display: block;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  text-decoration: none;
 }
 
 .home-import-dialog-info {

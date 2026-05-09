@@ -777,9 +777,14 @@
   line-height: var(--reader-line-height, 40px);
   margin: 0 0 var(--reader-paragraph-gap, 20px);
   orphans: 1;
-  text-align: left;
+  text-align: justify;
+  text-align-last: left;  
+  text-justify: inter-ideograph; 
   white-space: pre-wrap;
   widows: 1;
+  /* [特别标注] 当前阅读器会受到浏览器中文标点避头尾规则影响，导致某些情况下句尾会出现莫名换行，修复方式是无视此规则，增加下方一条CSS即可，默认无视 */
+  /* line-break: anywhere; */
+  /* 如果需要修复中文标点避头尾规则问题，请取消上述代码注释 */
 }
 
 .reader-content-image {

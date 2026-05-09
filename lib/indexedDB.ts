@@ -14,6 +14,7 @@ export interface IDBResult<T = unknown> {
   data: T;
   error: boolean;
   message?: string;
+  reason?: string;
   progress?: number;
 }
 

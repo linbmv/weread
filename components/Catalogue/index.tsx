@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { BookInfo } from '@/store/books';
 import type { TextSyntaxTree } from '@/lib/transformText';
 import {
@@ -17,7 +17,7 @@ import { getReaderProgress } from '@/lib/readerProgress';
 import { getStoredReaderReadingMode } from '@/lib/readerSettings';
 import { useResolvedBookImage } from '@/lib/useResolvedBookImage';
 import { BookCoverFallback } from '@/components/BookCard';
-import { OcticonSortAsc } from '@/components/Octicon';
+import { OcticonClock, OcticonSortAsc } from '@/components/Octicon';
 import './index.scss';
 
 const toPage = (e: Event) => {
@@ -74,6 +74,13 @@ const isCurrentPageBookmarked = (bookId: string | undefined): boolean => {
   return Boolean(getReaderBookmarkForPage(bookId, getPageNum()));
 };
 
+const formatReadingDuration = (durationMs: number | undefined): string => {
+  const totalMinutes = Math.max(0, Math.floor((durationMs || 0) / 60_000));
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return hours > 0 ? `阅读时长${hours}小时${minutes}分` : `阅读时长${minutes}分`;
+};
+
 const CatalogueProgressIcon = (): React.JSX.Element => (
   <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
     <path
@@ -95,6 +102,11 @@ export const Catalogue = (): React.JSX.Element => {
   const [coverFailed, setCoverFailed] = useState(false);
   const resolvedCover = useResolvedBookImage(bookDetail?.id, bookDetail?.image);
   const currentReadPercent = getCatalogueReadPercent(bookDetail?.id, currentTitleId);
+  const isScrollMode = getStoredReaderReadingMode() === 'scroll';
+  const readingDurationLabel = useMemo(
+    () => formatReadingDuration(getReaderProgress(bookDetail?.id)?.totalReadingMs),
+    [bookDetail?.id],
+  );
 
   useEffect(() => {
     setCoverFailed(false);
@@ -161,14 +173,12 @@ export const Catalogue = (): React.JSX.Element => {
     syncHook.tap(EVENT_NAME.SET_CURRENT_BOOK_DETAIL, updateCatalogueMeta);
     syncHook.tap(EVENT_NAME.SET_READER_ANNOTATIONS, updateCatalogueMeta);
     syncHook.tap(EVENT_NAME.SET_READER_NAVIGATION_TARGET, updateCatalogueMeta);
-    syncHook.tap(EVENT_NAME.SET_READER_PROGRESS, updateCatalogueMeta);
     syncHook.tap(EVENT_NAME.SET_TEXT_SYNTAX_TREE, updateCatalogueMeta);
     return () => {
       syncHook.off(EVENT_NAME.SET_CURRENT_BOOK_PAGE, updateCatalogueMeta);
       syncHook.off(EVENT_NAME.SET_CURRENT_BOOK_DETAIL, updateCatalogueMeta);
       syncHook.off(EVENT_NAME.SET_READER_ANNOTATIONS, updateCatalogueMeta);
       syncHook.off(EVENT_NAME.SET_READER_NAVIGATION_TARGET, updateCatalogueMeta);
-      syncHook.off(EVENT_NAME.SET_READER_PROGRESS, updateCatalogueMeta);
       syncHook.off(EVENT_NAME.SET_TEXT_SYNTAX_TREE, updateCatalogueMeta);
     };
   }, [updateCatalogueMeta]);
@@ -197,52 +207,61 @@ export const Catalogue = (): React.JSX.Element => {
           <div className="text-sm text-text-color-2 font-medium mt-1 break-all">{bookDetail?.author}</div>
         </div>
       </div>
-      <div className="mx-9 basis-10 flex items-center justify-end shrink-0" ref={sortRef}>
-        <OcticonSortAsc
-          className={`cursor-pointer hover-icon ${sortDirection}`}
-          style={{
-            transform: sortDirection === SORT_DIRECTION.DOWN ? 'rotate(180deg)' : 'rotate(0deg)',
-            transition: 'transform 180ms ease',
-          }}
-        />
+      <div className="readerCatalog_header_meta">
+        <div className="readerCatalog_reading_duration">
+          <OcticonClock />
+          <div>{readingDurationLabel}</div>
+        </div>
+        <div ref={sortRef}>
+          <OcticonSortAsc
+            className={`cursor-pointer hover-icon ${sortDirection}`}
+            style={{
+              transform: sortDirection === SORT_DIRECTION.DOWN ? 'rotate(180deg)' : 'rotate(0deg)',
+              transition: 'transform 180ms ease',
+            }}
+          />
+        </div>
       </div>
       <div className="reader-menu-scroll-area overflow-y-auto flex-auto" ref={scrollRef}>
         {textSyntaxTree?.sequences?.map((item) => {
           const isCurrentTitle = item.titleId === currentTitleId;
           const isBookmarked = isCurrentTitle && isCurrentPageBookmarked(bookDetail?.id);
+          const showProgress = isCurrentTitle && currentReadPercent !== undefined;
+          const showBookmarkAction = isCurrentTitle && !isScrollMode;
+          const showMeta = showProgress || showBookmarkAction;
           return (
             <div
-              className={`readerCatalog_list_item ${isCurrentTitle ? 'is-current' : ''}`}
+              className={`readerCatalog_list_item ${isCurrentTitle ? 'is-current' : ''} ${showMeta ? 'has-meta' : ''}`}
               data-title-id={item.titleId}
               key={item.titleId}
             >
               <div className="readerCatalog_list_item_inner">
                 <div className="readerCatalog_list_item_title">{item.title}</div>
-                {isCurrentTitle ? (
+                {showMeta ? (
                   <div className="readerCatalog_list_item_meta">
-                    {currentReadPercent !== undefined ? (
+                    {showProgress ? (
                       <div className="readerCatalog_list_item_meta_progress">
                         <CatalogueProgressIcon />
                         <div>{`当前读到 ${currentReadPercent}%`}</div>
                       </div>
-                    ) : (
-                      <div></div>
-                    )}
-                    <button
-                      className="readerCatalog_list_item_meta_add_bookMark"
-                      data-reader-catalog-bookmark="true"
-                      type="button"
-                      onClick={addCurrentPageBookmark}
-                    >
-                      {isBookmarked ? (
-                        <span>已添加书签</span>
-                      ) : (
-                        <>
-                          <span className="readerCatalog_list_item_meta_add_bookMark_plus">+</span>
-                          <span>书签</span>
-                        </>
-                      )}
-                    </button>
+                    ) : null}
+                    {showBookmarkAction ? (
+                      <button
+                        className="readerCatalog_list_item_meta_add_bookMark"
+                        data-reader-catalog-bookmark="true"
+                        type="button"
+                        onClick={addCurrentPageBookmark}
+                      >
+                        {isBookmarked ? (
+                          <span>已添加书签</span>
+                        ) : (
+                          <>
+                            <span className="readerCatalog_list_item_meta_add_bookMark_plus">+</span>
+                            <span>书签</span>
+                          </>
+                        )}
+                      </button>
+                    ) : null}
                   </div>
                 ) : null}
               </div>

@@ -27,6 +27,12 @@ const FINGERPRINT_SAMPLE_SIZE = 4096;
 
 const PENDING_OPERATION_TIMEOUT_MS = 60_000;
 
+export const BOOK_STORE_RESULT_REASON = {
+  BOOK_ALREADY_EXISTS: 'book-already-exists',
+} as const;
+
+export type BookStoreResultReason = (typeof BOOK_STORE_RESULT_REASON)[keyof typeof BOOK_STORE_RESULT_REASON];
+
 export const createBookStore = (): void => {
   db.createObjectStore({ storeName: STORE_NAME_BOOKS_INFO_KEY, options: { keyPath: 'id' } });
 };
@@ -45,12 +51,16 @@ export const getBookFingerprint = async (data: {
   return sha256Hex(seed);
 };
 
-const successResult = <T>(data: T, message?: string): IDBResult<T> => ({
+const successResult = <T>(
+  data: T,
+  options: { message?: string; reason?: BookStoreResultReason } = {},
+): IDBResult<T> => ({
   status: 'success',
   code: 0,
   data,
   error: false,
-  message,
+  message: options.message,
+  reason: options.reason,
 });
 
 const errorResult = <T>(message: string, fallback?: T): IDBResult<T> => ({
@@ -187,7 +197,7 @@ export const addBook = async (data: {
         modifyTime,
         document: { version: 1 } as ReaderBookDocument,
       },
-      'Book already exists',
+      { reason: BOOK_STORE_RESULT_REASON.BOOK_ALREADY_EXISTS },
     );
   }
 
@@ -247,7 +257,7 @@ export const addBook = async (data: {
           modifyTime,
           document: { version: 1 } as ReaderBookDocument,
         },
-        'Book already exists',
+        { reason: BOOK_STORE_RESULT_REASON.BOOK_ALREADY_EXISTS },
       );
     }
     return addResult;

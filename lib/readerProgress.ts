@@ -11,7 +11,9 @@ export interface ReaderLocator {
   textBefore?: string;
   textAfter?: string;
   globalProgress?: number;
+  lastReadAt?: number;
   readPercent?: number;
+  totalReadingMs?: number;
   totalPageCount?: number;
   visiblePages?: number;
   readingMode?: 'paged' | 'scroll';
@@ -291,6 +293,25 @@ export const getReaderProgress = (bookId?: string | null): ReaderLocator | undef
   return readProgressMap()[bookId];
 };
 
+export const addReaderReadingTime = (bookId: string | undefined | null, durationMs: number): void => {
+  if (!bookId || !Number.isFinite(durationMs) || durationMs <= 0) return;
+  const map = readProgressMap();
+  const previous = map[bookId];
+  const nextDuration = Math.max(0, Math.round(durationMs));
+  const now = Date.now();
+  map[bookId] = {
+    ...(previous || {
+      bookId,
+      page: 0,
+      updatedAt: now,
+    }),
+    lastReadAt: now,
+    totalReadingMs: Math.max(0, Math.round(previous?.totalReadingMs || 0)) + nextDuration,
+  };
+  writeProgressMap(map);
+  syncHook.call(EVENT_NAME.SET_READER_PROGRESS);
+};
+
 export const deleteReaderProgress = (bookId?: string | null): void => {
   if (!bookId) return;
   const map = readProgressMap();
@@ -306,6 +327,8 @@ export const saveReaderProgress = (locator: ReaderLocator): void => {
   const previous = map[locator.bookId];
   map[locator.bookId] = {
     ...locator,
+    lastReadAt: locator.lastReadAt ?? previous?.lastReadAt,
+    totalReadingMs: locator.totalReadingMs ?? previous?.totalReadingMs,
     updatedAt: Date.now(),
   };
   writeProgressMap(map);
