@@ -8,6 +8,7 @@ export interface ChapterPagination {
 }
 
 export interface ChapterLayoutFingerprint {
+  firstLineIndent: string;
   fontFamily: string;
   fontSize: number;
   pageWidth: number;
@@ -22,7 +23,7 @@ const CACHE_LIMIT = 256;
 const cache = new Map<string, ChapterPagination>();
 
 const fingerprintToString = (f: ChapterLayoutFingerprint): string => {
-  return `${f.fontFamily}|${f.fontSize}|${f.pageWidth}|${f.pageHeight}|${f.pageGap}|${f.paragraphGap}|${f.lineHeight}`;
+  return `${f.fontFamily}|${f.fontSize}|${f.firstLineIndent}|${f.pageWidth}|${f.pageHeight}|${f.pageGap}|${f.paragraphGap}|${f.lineHeight}`;
 };
 
 const buildCacheKey = (bookId: string, titleId: number, fingerprint: ChapterLayoutFingerprint): string => {

@@ -347,6 +347,35 @@ export const deleteReaderProgress = (bookId?: string | null): void => {
   syncHook.call(EVENT_NAME.SET_READER_PROGRESS);
 };
 
+export const restoreReaderProgressForBook = async ({
+  bookId,
+  progress,
+}: {
+  bookId: string;
+  progress?: ReaderLocator;
+}): Promise<void> => {
+  const map = readProgressMap();
+  if (!progress) {
+    delete map[bookId];
+    writeProgressMap(map);
+    await db.delete({ key: bookId, storeName: STORAGE_KEY });
+    syncHook.call(EVENT_NAME.SET_READER_PROGRESS);
+    return;
+  }
+  const next: ReaderLocator = {
+    ...progress,
+    bookId,
+    updatedAt: Number.isFinite(progress.updatedAt) ? progress.updatedAt : Date.now(),
+  };
+  map[bookId] = next;
+  writeProgressMap(map);
+  await db.update<ReaderLocator>({
+    data: next,
+    storeName: STORAGE_KEY,
+  });
+  syncHook.call(EVENT_NAME.SET_READER_PROGRESS);
+};
+
 export const saveReaderProgress = (locator: ReaderLocator): void => {
   if (!locator.bookId) return;
   const map = readProgressMap();

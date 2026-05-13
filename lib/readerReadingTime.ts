@@ -146,6 +146,85 @@ export const getReaderReadingTimeSummary = (bookId?: string): {
   return { daily, readingDays, totalMs };
 };
 
+export const getReaderReadingTimeRecordsForBook = async (
+  bookId?: string,
+): Promise<{
+  daily: ReaderReadingTimeDailyAggregate[];
+  segments: ReaderReadingTimeSegment[];
+}> => {
+  if (!bookId) return { daily: [], segments: [] };
+  const [dailyResult, segmentResult] = await Promise.all([
+    db.readByCursor<ReaderReadingTimeDailyAggregate>({ storeName: READER_READING_TIME_DAILY_STORE_NAME }),
+    db.readByCursor<ReaderReadingTimeSegment>({ storeName: READER_READING_TIME_SEGMENTS_STORE_NAME }),
+  ]);
+  return {
+    daily: dailyResult.error ? [] : dailyResult.data.filter((record) => record.bookId === bookId),
+    segments: segmentResult.error ? [] : segmentResult.data.filter((segment) => segment.bookId === bookId),
+  };
+};
+
+export const restoreReaderReadingTimeForBook = async ({
+  bookId,
+  daily,
+  segments,
+  sourceBookId,
+}: {
+  bookId: string;
+  daily: ReaderReadingTimeDailyAggregate[];
+  segments: ReaderReadingTimeSegment[];
+  sourceBookId: string;
+}): Promise<void> => {
+  const [existingDaily, existingSegments] = await Promise.all([
+    db.readByCursor<ReaderReadingTimeDailyAggregate>({ storeName: READER_READING_TIME_DAILY_STORE_NAME }),
+    db.readByCursor<ReaderReadingTimeSegment>({ storeName: READER_READING_TIME_SEGMENTS_STORE_NAME }),
+  ]);
+  const deleteDaily = existingDaily.error
+    ? []
+    : existingDaily.data
+        .filter((record) => record.bookId === bookId)
+        .map((record) => {
+          dailyAggregateCache.delete(record.id);
+          return db.delete({ key: record.id, storeName: READER_READING_TIME_DAILY_STORE_NAME });
+        });
+  const deleteSegments = existingSegments.error
+    ? []
+    : existingSegments.data
+        .filter((segment) => segment.bookId === bookId)
+        .map((segment) => db.delete({ key: segment.id, storeName: READER_READING_TIME_SEGMENTS_STORE_NAME }));
+  await Promise.all([...deleteDaily, ...deleteSegments]);
+
+  const restoreDaily = daily
+    .filter((record) => record?.dayKey)
+    .map((record) => {
+      const next: ReaderReadingTimeDailyAggregate = {
+        ...record,
+        bookId,
+        id: `${bookId}:${record.dayKey}`,
+      };
+      dailyAggregateCache.set(next.id, next);
+      return db.update<ReaderReadingTimeDailyAggregate>({
+        data: next,
+        storeName: READER_READING_TIME_DAILY_STORE_NAME,
+      });
+    });
+
+  const restoreSegments = segments
+    .filter((segment) => segment?.id && segment.durationMs > 0)
+    .map((segment) => {
+      const next: ReaderReadingTimeSegment = {
+        ...segment,
+        bookId,
+        id: sourceBookId === bookId ? segment.id : `${bookId}:${segment.id}`,
+      };
+      return db.update<ReaderReadingTimeSegment>({
+        data: next,
+        storeName: READER_READING_TIME_SEGMENTS_STORE_NAME,
+      });
+    });
+
+  await Promise.all([...restoreDaily, ...restoreSegments]);
+};
+
 export const deleteReaderReadingTimeForBook = (bookId?: string | null): void => {
   if (!bookId) return;
   Array.from(dailyAggregateCache.values())

@@ -16,6 +16,15 @@ import { startSpaViewTransition } from '@/lib/navigation';
 import { importBookFile, isSupportedBookFile } from '@/lib/bookImporter';
 import type { BookInfo, SearchResult } from '@/store/books';
 import type { ImportedBookData } from '@/lib/bookImporter';
+import {
+  createImportedBookDataFromBackup,
+  getBackupArchiveIdentity,
+  isBackupFile,
+  isFullBackupArchive,
+  parseBackupFile,
+  restoreBackupUserData,
+} from '@/lib/backup/importBackup';
+import type { ParsedBackupArchive } from '@/lib/backup/backupSchema';
 import { ROUTE_PATH } from '@/router';
 import { DEVICE_ENUM, useCheckDevice } from '@/lib/hooks';
 import { useResolvedBookImage } from '@/lib/useResolvedBookImage';
@@ -23,6 +32,7 @@ import { clearReaderBookData } from '@/lib/readerBookData';
 import { getReaderProgress } from '@/lib/readerProgress';
 import { getErrorMessage } from '@/lib/utils';
 import { showGlobalFallback } from '@/lib/globalFallback';
+import { clearChapterPaginationCache } from '@/lib/chapterPagination';
 import { Loading } from '@/components/Loading';
 import {
   OcticonChevronRight as HomeArrowRightIcon,
@@ -54,12 +64,16 @@ const MAX_BOOK_LOAD_RETRIES = 3;
 
 const BOOK_IMPORT_TIMEOUT_MS = 180_000;
 
-type ImportConflictType = 'same-book' | 'same-title';
+type ImportConflictType = 'missing-book' | 'restore-user-data' | 'same-book' | 'same-title';
 
 type ImportConflictAction = 'cancel' | 'keepBoth' | 'overwrite';
 
 interface ImportConflictState {
   bookId: string;
+  confirmOnly?: boolean;
+  description?: string;
+  disableBookLink?: boolean;
+  dialogTitle?: string;
   fileName: string;
   fileSizeLabel: string;
   lastReadLabel: string;
@@ -67,6 +81,7 @@ interface ImportConflictState {
   sourceTypeLabel: string;
   title: string;
   type: ImportConflictType;
+  warningText?: string;
 }
 
 interface ImportConflictDecision {
@@ -84,7 +99,7 @@ const chooseBookFiles = (): Promise<File[]> => {
   return new Promise((resolve) => {
     const uploadFile = document.createElement('input');
     uploadFile.setAttribute('type', 'file');
-    uploadFile.setAttribute('accept', '.txt,.epub,text/plain,application/epub+zip');
+    uploadFile.setAttribute('accept', '.txt,.epub,.bdz,text/plain,application/epub+zip,application/zip');
     uploadFile.setAttribute('multiple', 'multiple');
     uploadFile.onchange = () => {
       resolve(uploadFile.files ? Array.from(uploadFile.files) : []);
@@ -93,6 +108,8 @@ const chooseBookFiles = (): Promise<File[]> => {
     uploadFile.click();
   });
 };
+
+const isSupportedImportFile = (file: File): boolean => isSupportedBookFile(file) || isBackupFile(file);
 
 const withTimeout = <T,>(
   promise: Promise<T>,
@@ -200,6 +217,91 @@ const createImportConflictState = ({
   };
 };
 
+const formatBackupCreatedAt = (timestamp?: number): string => {
+  if (!timestamp || !Number.isFinite(timestamp)) return '未知时间';
+  return formatImportDate(timestamp);
+};
+
+const createBackupUserDataConflictState = ({
+  archive,
+  existingBook,
+  file,
+  showApplyToRemaining,
+}: {
+  archive: ParsedBackupArchive;
+  existingBook: BookInfo;
+  file: File;
+  showApplyToRemaining: boolean;
+}): ImportConflictState => {
+  const progress = getReaderProgress(existingBook.id);
+  const readPercent = formatProgressPercent(progress?.readPercent);
+  const lastReadDateLabel = `上次阅读时间 ${formatImportDate(progress?.updatedAt)}`;
+  const lastReadLabel = readPercent > 0 ? `${lastReadDateLabel} (已阅读 ${readPercent}%)` : lastReadDateLabel;
+  return {
+    bookId: existingBook.id,
+    description: `${existingBook.title || archive.book.title} 已存在用户数据，是否继续恢复：`,
+    dialogTitle: '恢复用户数据',
+    fileName: file.name,
+    fileSizeLabel: formatBookFileSize(file.size),
+    lastReadLabel: `${lastReadLabel} | 备份时间 ${formatBackupCreatedAt(archive.manifest.createdAt)}`,
+    showApplyToRemaining,
+    sourceTypeLabel: 'Archive',
+    title: existingBook.title || archive.book.title,
+    type: 'restore-user-data',
+    warningText: '恢复将覆盖当前阅读进度、笔记、书签等重要数据',
+  };
+};
+
+const createMissingBackupBookState = ({
+  archive,
+  file,
+}: {
+  archive: ParsedBackupArchive;
+  file: File;
+}): ImportConflictState => {
+  const title = archive.book.title || archive.book.id;
+  const fingerprint = archive.book.fingerprint || archive.book.id;
+  return {
+    bookId: archive.book.id,
+    confirmOnly: true,
+    description: `无法恢复 ${title} 的用户数据，因为书架中找不到对应的书籍。`,
+    dialogTitle: '恢复用户数据',
+    disableBookLink: true,
+    fileName: file.name,
+    fileSizeLabel: formatBookFileSize(file.size),
+    lastReadLabel: `备份时间 ${formatBackupCreatedAt(archive.manifest.createdAt)} | 书籍 ${fingerprint.slice(0, 12)}`,
+    showApplyToRemaining: false,
+    sourceTypeLabel: archive.book.sourceType.toUpperCase(),
+    title,
+    type: 'missing-book',
+    warningText: '恢复失败：缺失书籍本体',
+  };
+};
+
+const selectBackupArchivesForRestore = (archives: ParsedBackupArchive[]): {
+  ignoredCount: number;
+  selected: ParsedBackupArchive[];
+} => {
+  const groups = new Map<string, ParsedBackupArchive[]>();
+  archives.forEach((archive) => {
+    const key = getBackupArchiveIdentity(archive);
+    groups.set(key, [...(groups.get(key) || []), archive]);
+  });
+
+  const selected: ParsedBackupArchive[] = [];
+  let ignoredCount = 0;
+  groups.forEach((group) => {
+    const fullBackups = group.filter(isFullBackupArchive);
+    const candidates = fullBackups.length > 0 ? fullBackups : group;
+    const sorted = [...candidates].sort((a, b) => b.manifest.createdAt - a.manifest.createdAt);
+    const [latest, ...rest] = sorted;
+    if (latest) selected.push(latest);
+    ignoredCount += rest.length + (fullBackups.length > 0 ? group.length - fullBackups.length : 0);
+  });
+
+  return { ignoredCount, selected };
+};
+
 const upsertBookListItem = (books: BookInfo[], book: BookInfo): BookInfo[] => {
   const index = books.findIndex((item) => item.id === book.id);
   if (index === -1) return [...books, book];
@@ -231,9 +333,11 @@ const ImportConflictDialog = ({ state, onCancel, onConfirm }: ImportConflictDial
 
   if (!state) return null;
 
-  const canKeepBoth = state.type === 'same-title';
+  const isConfirmOnly = Boolean(state.confirmOnly);
+  const canKeepBoth = !isConfirmOnly && state.type === 'same-title';
   const isCancelDisabled = canKeepBoth && keepBoth;
   const title = state.type === 'same-book' ? '检测到相同书籍' : '检测到重名书籍';
+  const dialogTitle = state.dialogTitle || title;
   const bookUrl = `${ROUTE_PATH.BOOK_DETAIL}?id=${encodeURIComponent(state.bookId)}`;
   const openExistingBook = (event: React.MouseEvent<HTMLAnchorElement>) => {
     event.preventDefault();
@@ -245,14 +349,18 @@ const ImportConflictDialog = ({ state, onCancel, onConfirm }: ImportConflictDial
     <div className="home-import-dialog-layer" role="presentation">
       <div className="home-import-dialog" role="dialog" aria-modal="true" aria-labelledby="home-import-dialog-title">
         <div className="home-import-dialog-title" id="home-import-dialog-title">
-          {title}
+          {dialogTitle}
         </div>
         <div className="home-import-dialog-content">
-          <div>{state.title} 已经在书架中：</div>
+          <div>{state.description || `${state.title} 已经在书架中：`}</div>
           <div className="home-import-dialog-info">
-            <a className="home-import-dialog-file" href={bookUrl} onClick={openExistingBook}>
-              {state.fileName}
-            </a>
+            {state.disableBookLink ? (
+              <div className="home-import-dialog-file">{state.fileName}</div>
+            ) : (
+              <a className="home-import-dialog-file" href={bookUrl} onClick={openExistingBook}>
+                {state.fileName}
+              </a>
+            )}
             <div className="home-import-dialog-meta">
               {state.sourceTypeLabel} | {state.fileSizeLabel} | {state.lastReadLabel}
             </div>
@@ -260,7 +368,9 @@ const ImportConflictDialog = ({ state, onCancel, onConfirm }: ImportConflictDial
           {keepBoth ? (
             <div className="home-import-dialog-note">将自动重命名为 {state.title}(n)</div>
           ) : (
-            <div className="home-import-dialog-warning">覆盖后，原有的阅读进度和笔记将被清除</div>
+            <div className="home-import-dialog-warning">
+              {state.warningText || '覆盖后，原有的阅读进度和笔记将被清除'}
+            </div>
           )}
         </div>
         {canKeepBoth && (
@@ -269,7 +379,7 @@ const ImportConflictDialog = ({ state, onCancel, onConfirm }: ImportConflictDial
             <span>保留两个文件</span>
           </label>
         )}
-        {state.showApplyToRemaining && (
+        {!isConfirmOnly && state.showApplyToRemaining && (
           <label className="home-import-dialog-option">
             <input
               checked={applyToRemaining}
@@ -283,6 +393,7 @@ const ImportConflictDialog = ({ state, onCancel, onConfirm }: ImportConflictDial
           <button
             className="home-import-dialog-button"
             disabled={isCancelDisabled}
+            style={isConfirmOnly ? { display: 'none' } : undefined}
             type="button"
             onClick={() => onCancel(applyToRemaining)}
           >
@@ -291,7 +402,13 @@ const ImportConflictDialog = ({ state, onCancel, onConfirm }: ImportConflictDial
           <button
             className="home-import-dialog-button home-import-dialog-button-primary"
             type="button"
-            onClick={() => onConfirm(keepBoth ? 'keepBoth' : 'overwrite', applyToRemaining)}
+            onClick={() => {
+              if (isConfirmOnly) {
+                onCancel(false);
+                return;
+              }
+              onConfirm(keepBoth ? 'keepBoth' : 'overwrite', applyToRemaining);
+            }}
           >
             确定
           </button>
@@ -361,7 +478,7 @@ const useHomeBookImport = (
   const requestConflictDecision = useCallback(
     (state: ImportConflictState): Promise<ImportConflictDecision> => {
       const sharedDecision = sharedConflictDecisionRef.current;
-      if (sharedDecision && isSharedDecisionCompatible(sharedDecision, state)) {
+      if (!state.confirmOnly && sharedDecision && isSharedDecisionCompatible(sharedDecision, state)) {
         return Promise.resolve({ ...sharedDecision, applyToRemaining: false });
       }
       return new Promise((resolve) => {
@@ -402,9 +519,9 @@ const useHomeBookImport = (
       const files = await chooseBookFiles();
       if (files.length === 0) return;
 
-      const supportedFiles = files.filter(isSupportedBookFile);
+      const supportedFiles = files.filter(isSupportedImportFile);
       if (supportedFiles.length === 0) {
-        showGlobalFallback({ message: '请选择 TXT 或 EPUB 书籍文件', tone: 'error' });
+        showGlobalFallback({ message: '请选择 TXT、EPUB 或 BDZ 文件', tone: 'error' });
         return;
       }
       if (supportedFiles.length < files.length) {
@@ -419,9 +536,149 @@ const useHomeBookImport = (
       let importedCount = 0;
       let failedCount = 0;
       const showApplyToRemaining = supportedFiles.length > 1;
+      const parsedBackupByFile = new Map<File, ParsedBackupArchive>();
+      const backupArchives: ParsedBackupArchive[] = [];
 
-      for (const file of supportedFiles) {
+      for (const file of supportedFiles.filter(isBackupFile)) {
         try {
+          backupArchives.push(await parseBackupFile(file));
+        } catch (error) {
+          failedCount += 1;
+          showGlobalFallback({ message: getImportFailureMessage(file, error), tone: 'error' });
+        }
+      }
+
+      if (backupArchives.length > 0) {
+        const { ignoredCount, selected } = selectBackupArchivesForRestore(backupArchives);
+        selected.forEach((archive) => parsedBackupByFile.set(archive.file, archive));
+        if (ignoredCount > 0) {
+          showGlobalFallback({ message: `已忽略 ${ignoredCount} 个低优先级备份`, tone: 'info' });
+        }
+      }
+      const importQueue = [
+        ...supportedFiles.filter((file) => !isBackupFile(file)),
+        ...supportedFiles.filter((file) => isBackupFile(file) && parsedBackupByFile.has(file)),
+      ];
+
+      for (const file of importQueue) {
+        try {
+          if (isBackupFile(file)) {
+            const archive = parsedBackupByFile.get(file);
+            if (!archive) continue;
+            const backupIdentity = getBackupArchiveIdentity(archive);
+
+            if (isFullBackupArchive(archive)) {
+              const imported = createImportedBookDataFromBackup(archive);
+              const documentFingerprint = await getBookFingerprint(imported);
+              const fingerprint = imported.fingerprint || documentFingerprint;
+              const existingSameBook = workingBooks.find((book) => {
+                const identity = getBookIdentity(book);
+                return (
+                  book.id === archive.book.id ||
+                  identity === backupIdentity ||
+                  identity === fingerprint ||
+                  identity === documentFingerprint
+                );
+              });
+              const importedTitle = normalizeBookTitle(imported.title);
+
+              if (existingSameBook) {
+                const decision = await requestConflictDecision(
+                  createImportConflictState({
+                    existingBook: existingSameBook,
+                    file,
+                    imported,
+                    showApplyToRemaining,
+                    type: 'same-book',
+                  }),
+                );
+                if (decision.action === 'cancel') continue;
+                clearChapterPaginationCache(existingSameBook.id);
+                const result = await addBook({
+                  ...imported,
+                  fingerprint,
+                  id: existingSameBook.id,
+                  overwrite: true,
+                });
+                if (result.error || !result.data) {
+                  throw new Error(result.message || `Failed to restore backup: ${file.name}`);
+                }
+                await restoreBackupUserData({ archive, targetBookId: result.data.id });
+                workingBooks = upsertBookListItem(workingBooks, result.data);
+                importedCount += 1;
+                continue;
+              }
+
+              const existingSameTitleBook = workingBooks.find(
+                (book) => normalizeBookTitle(book.title) === importedTitle && getBookIdentity(book) !== fingerprint,
+              );
+              if (existingSameTitleBook) {
+                const decision = await requestConflictDecision(
+                  createImportConflictState({
+                    existingBook: existingSameTitleBook,
+                    file,
+                    imported,
+                    showApplyToRemaining,
+                    type: 'same-title',
+                  }),
+                );
+                if (decision.action === 'cancel') continue;
+                if (decision.action === 'overwrite') {
+                  clearChapterPaginationCache(existingSameTitleBook.id);
+                  const result = await addBook({
+                    ...imported,
+                    fingerprint,
+                    id: existingSameTitleBook.id,
+                    overwrite: true,
+                  });
+                  if (result.error || !result.data) {
+                    throw new Error(result.message || `Failed to restore backup: ${file.name}`);
+                  }
+                  await restoreBackupUserData({ archive, targetBookId: result.data.id });
+                  workingBooks = upsertBookListItem(workingBooks, result.data);
+                  importedCount += 1;
+                  continue;
+                }
+              }
+
+              const title = resolveUniqueBookTitle(imported.title, workingBooks, fingerprint);
+              const result = await addBook({
+                ...imported,
+                fingerprint,
+                id: archive.book.id,
+                title,
+              });
+              if (result.error || !result.data) {
+                throw new Error(result.message || `Failed to restore backup: ${file.name}`);
+              }
+              await restoreBackupUserData({ archive, targetBookId: result.data.id });
+              workingBooks = upsertBookListItem(workingBooks, result.data);
+              importedCount += 1;
+              continue;
+            }
+
+            const targetBook = workingBooks.find((book) => {
+              const identity = getBookIdentity(book);
+              return book.id === archive.book.id || identity === backupIdentity || identity === archive.book.fingerprint;
+            });
+            if (!targetBook) {
+              await requestConflictDecision(createMissingBackupBookState({ archive, file }));
+              continue;
+            }
+            const decision = await requestConflictDecision(
+              createBackupUserDataConflictState({
+                archive,
+                existingBook: targetBook,
+                file,
+                showApplyToRemaining,
+              }),
+            );
+            if (decision.action === 'cancel') continue;
+            await restoreBackupUserData({ archive, targetBookId: targetBook.id });
+            importedCount += 1;
+            continue;
+          }
+
           const imported = await importBookFileWithFallback(file);
           const documentFingerprint = await getBookFingerprint(imported);
           const fingerprint = imported.fingerprint || documentFingerprint;

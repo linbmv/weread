@@ -19,8 +19,12 @@
   inset: 0;
   z-index: 20;
   overflow-y: auto;
-  background: rgba(0, 0, 0, 0.56);
+  background: rgba(33, 40, 50, 0.18);
   backdrop-filter: blur(6px);
+}
+
+:root[theme='dark'] .reader-catalog-data-overlay {
+  background: rgba(0, 0, 0, 0.56);
 }
 
 .reader-catalog-data-overlay[data-state='open'] {
@@ -32,7 +36,117 @@
 }
 
 .reader-catalog-data-sheet {
+  background: var(--front-bg-color-3);
   border-radius: 8px;
+  color: var(--text-color-1);
+}
+
+.reader-catalog-data-title,
+.reader-catalog-data-value {
+  color: var(--text-color-1);
+}
+
+.reader-catalog-data-muted,
+.reader-catalog-data-label,
+.reader-catalog-data-month-summary {
+  color: var(--text-color-2);
+}
+
+.reader-catalog-data-unit {
+  color: var(--text-color-2);
+}
+
+.reader-catalog-data-subtle,
+.reader-catalog-data-empty {
+  color: var(--text-color-3);
+}
+
+.reader-catalog-data-cover {
+  background: color-mix(in srgb, var(--front-bg-color-2) 72%, transparent);
+  border-color: var(--border-color-1);
+}
+
+.reader-catalog-data-card {
+  background: var(--front-bg-color-2);
+}
+
+.reader-catalog-data-icon-button {
+  background: color-mix(in srgb, var(--front-bg-color-1) 72%, transparent);
+  color: var(--text-color-2);
+}
+
+.reader-catalog-data-icon-button:hover {
+  background: color-mix(in srgb, var(--front-bg-color-2) 78%, var(--text-color-1));
+  color: var(--text-color-1);
+}
+
+.reader-catalog-data-month-row,
+.reader-catalog-data-day-row {
+  background: var(--front-bg-color-1);
+}
+
+.reader-catalog-data-month-bar {
+  background: linear-gradient(90deg, #5bcdae, #45b799);
+}
+
+.reader-catalog-data-day-bar {
+  background: linear-gradient(90deg, #68b5e6, #4b9ee2);
+}
+
+.reader-catalog-data-bar-text {
+  color: #fff;
+}
+
+.reader-catalog-data-button {
+  border: 0;
+  cursor: pointer;
+}
+
+.reader-catalog-data-button-secondary {
+  background: var(--front-bg-color-2);
+  color: var(--text-color-1);
+}
+
+.reader-catalog-data-button-secondary:hover {
+  background: color-mix(in srgb, var(--front-bg-color-2) 86%, var(--text-color-1));
+}
+
+.reader-catalog-data-button-primary {
+  background: #0095ff;
+  color: #fff;
+}
+
+.reader-catalog-data-button-primary:hover {
+  background: #0084eb;
+}
+
+:root[theme='dark'] .reader-catalog-data-card {
+  background: #2a2a2a;
+}
+
+:root[theme='dark'] .reader-catalog-data-month-row {
+  background: #282828;
+}
+
+:root[theme='dark'] .reader-catalog-data-day-row {
+  background: #1e2227;
+}
+
+:root[theme='dark'] .reader-catalog-data-icon-button {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+:root[theme='dark'] .reader-catalog-data-icon-button:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+:root[theme='dark'] .reader-catalog-data-button-secondary {
+  background: #3a3a3a;
+  color: #e0e0e0;
+}
+
+:root[theme='dark'] .reader-catalog-data-button-secondary:hover {
+  background: #4a4a4a;
 }
 
 .reader-catalog-data-overlay[data-state='open'] .reader-catalog-data-sheet {

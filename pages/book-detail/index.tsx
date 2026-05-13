@@ -69,6 +69,7 @@ import {
   saveReaderAnnotationColor,
   saveReaderBookmark,
   updateReaderAnnotation,
+  updateReaderBookmarkPage,
 } from '@/lib/readerAnnotations';
 import { findKeywordSentenceMatches } from '@/lib/searchText';
 import { useResolvedBookImage } from '@/lib/useResolvedBookImage';
@@ -963,6 +964,11 @@ interface ReaderLayout {
   pageHeight: number;
 }
 
+interface TextSyntaxTreeCacheEntry {
+  key: string;
+  tree: TextSyntaxTree;
+}
+
 interface ReaderPagedContentProps {
   textSyntaxTree: TextSyntaxTree;
   pageNum: number;
@@ -1436,6 +1442,36 @@ const getInitialPageWidth = (visiblePages: 1 | 2): number => {
   return Math.min(Math.max(window.innerWidth - 64, 280), 720);
 };
 
+const TEXT_SYNTAX_TREE_CACHE_LIMIT = 2;
+
+const textSyntaxTreeCache = new Map<string, TextSyntaxTreeCacheEntry>();
+
+const getTextSyntaxTreeCacheKey = (book: BookInfo): string => {
+  const rawTextLength = book.document?.rawText?.length ?? 0;
+  const chapterCount = book.document?.chapters?.length ?? 0;
+  return [book.id, book.fingerprint || '', book.modifyTime || 0, book.sourceType, rawTextLength, chapterCount].join(
+    '|',
+  );
+};
+
+const getCachedTextSyntaxTree = (book: BookInfo): TextSyntaxTree => {
+  const key = getTextSyntaxTreeCacheKey(book);
+  const cached = textSyntaxTreeCache.get(book.id);
+  if (cached?.key === key) {
+    textSyntaxTreeCache.delete(book.id);
+    textSyntaxTreeCache.set(book.id, cached);
+    return cached.tree;
+  }
+
+  const tree = readerDocumentToTextSyntaxTree(book.document);
+  textSyntaxTreeCache.set(book.id, { key, tree });
+  if (textSyntaxTreeCache.size > TEXT_SYNTAX_TREE_CACHE_LIMIT) {
+    const oldestBookId = textSyntaxTreeCache.keys().next().value;
+    if (oldestBookId !== undefined) textSyntaxTreeCache.delete(oldestBookId);
+  }
+  return tree;
+};
+
 const READER_BOOKMARK_EXCERPT_LENGTH = 100;
 
 const normalizeBookmarkText = (value: string): string => value.replace(/\s+/gu, ' ').trim();
@@ -1570,6 +1606,63 @@ const createPageBookmarkDraft = ({
   };
 };
 
+const getTextOffsetRect = (element: HTMLElement, offset: number): DOMRect | undefined => {
+  const textLength = element.textContent?.length ?? 0;
+  if (textLength <= 0) return undefined;
+  const targetOffset = Math.min(Math.max(Math.floor(offset), 0), textLength - 1);
+  const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+  const range = document.createRange();
+  let offsetBase = 0;
+
+  try {
+    let node = walker.nextNode() as Text | null;
+    while (node) {
+      const value = node.data || '';
+      const nextOffsetBase = offsetBase + value.length;
+      if (targetOffset >= offsetBase && targetOffset < nextOffsetBase) {
+        const nodeOffset = targetOffset - offsetBase;
+        range.setStart(node, nodeOffset);
+        range.setEnd(node, Math.min(nodeOffset + 1, value.length));
+        return Array.from(range.getClientRects()).find((rect) => rect.width > 0 && rect.height > 0);
+      }
+      offsetBase = nextOffsetBase;
+      node = walker.nextNode() as Text | null;
+    }
+  } finally {
+    range.detach();
+  }
+
+  return undefined;
+};
+
+const resolveRenderedBookmarkPage = ({
+  annotation,
+  chapterStartPages,
+  flow,
+  layout,
+}: {
+  annotation: ReaderAnnotation;
+  chapterStartPages: Record<number, number>;
+  flow: HTMLElement | null;
+  layout: ReaderLayout;
+}): number | undefined => {
+  if (!flow || layout.pageStep <= 0 || annotation.type !== 'bookmark') return undefined;
+  if (!annotation.blockId) return undefined;
+  const blockElement = flow.querySelector<HTMLElement>(
+    `.reader-content-block[data-reader-block-id="${CSS.escape(annotation.blockId)}"]`,
+  );
+  if (!blockElement) return undefined;
+
+  const rect = getTextOffsetRect(blockElement, annotation.startOffset) ?? blockElement.getBoundingClientRect();
+  if (rect.width <= 0 || rect.height <= 0) return undefined;
+  const flowRect = flow.getBoundingClientRect();
+  const localPage = Math.max(0, Math.floor((rect.left - flowRect.left + layout.pageStep * 0.08) / layout.pageStep));
+  const titleIdValue = Number(blockElement.dataset.readerTitleId);
+  const chapterStart = Number.isFinite(titleIdValue) ? chapterStartPages[titleIdValue] : undefined;
+  if (chapterStart === undefined) return undefined;
+  return chapterStart + localPage;
+};
+
 const ReaderPageBookmarkRibbon = ({ active }: { active: boolean }): React.JSX.Element => (
   <svg
     aria-hidden="true"
@@ -1639,6 +1732,7 @@ const ReaderPageBookmarkControl = ({
 };
 
 const buildChapterLayoutFingerprint = (layout: ReaderLayout): ChapterLayoutFingerprint => {
+  let firstLineIndent = '0';
   let fontFamily = '';
   let fontSize = 18;
   let lineHeight = 40;
@@ -1653,8 +1747,10 @@ const buildChapterLayoutFingerprint = (layout: ReaderLayout): ChapterLayoutFinge
     if (Number.isFinite(lineHeightValue) && lineHeightValue > 0) lineHeight = lineHeightValue;
     const paragraphGapValue = Number.parseFloat(style.getPropertyValue('--reader-paragraph-gap'));
     if (Number.isFinite(paragraphGapValue) && paragraphGapValue >= 0) paragraphGap = paragraphGapValue;
+    firstLineIndent = style.getPropertyValue('--reader-paragraph-text-indent').trim() || '0';
   }
   return {
+    firstLineIndent,
     fontFamily,
     fontSize,
     pageWidth: layout.pageWidth,
@@ -1666,6 +1762,7 @@ const buildChapterLayoutFingerprint = (layout: ReaderLayout): ChapterLayoutFinge
 };
 
 const chapterFingerprintEqual = (a: ChapterLayoutFingerprint, b: ChapterLayoutFingerprint): boolean =>
+  a.firstLineIndent === b.firstLineIndent &&
   a.fontFamily === b.fontFamily &&
   a.fontSize === b.fontSize &&
   a.pageWidth === b.pageWidth &&
@@ -2645,6 +2742,7 @@ const ReaderPagedContent = ({
   const visiblePagesRef = useRef(visiblePages);
   const measureFrameRef = useRef<number | null>(null);
   const contentMeasureFrameRef = useRef<number | null>(null);
+  const paginationMeasureFrameRef = useRef<number | null>(null);
   const settledMeasureTimerRef = useRef<number | null>(null);
   const copyToastTimerRef = useRef<number | null>(null);
   const [layout, setLayout] = useState<ReaderLayout>({ pageWidth: 0, pageGap: 0, pageStep: 0, pageHeight: 0 });
@@ -2818,6 +2916,10 @@ const ReaderPagedContent = ({
     if (currentTitleId === undefined) return [] as ReaderBlock[];
     return getChapterBlocks(textSyntaxTree, currentTitleId);
   }, [textSyntaxTree, currentTitleId]);
+  const currentChapterBlockIds = useMemo(
+    () => new Set(currentChapterBlocks.map((block) => block.id)),
+    [currentChapterBlocks],
+  );
   const currentChapterImageCount = useMemo(
     () => currentChapterBlocks.filter((block) => block.type === 'image').length,
     [currentChapterBlocks],
@@ -2854,6 +2956,17 @@ const ReaderPagedContent = ({
       pendingLocatorRef.current = locator;
     }
   }, [getCurrentLocator]);
+
+  const clearPendingLocator = useCallback(() => {
+    pendingLocatorRef.current = null;
+  }, []);
+
+  useEffect(() => {
+    syncHook.tap(EVENT_NAME.CLEAR_READER_PENDING_LOCATOR, clearPendingLocator);
+    return () => {
+      syncHook.off(EVENT_NAME.CLEAR_READER_PENDING_LOCATOR, clearPendingLocator);
+    };
+  }, [clearPendingLocator]);
 
   const runMeasureLayout = useCallback(() => {
     const viewport = viewportRef.current;
@@ -2948,6 +3061,10 @@ const ReaderPagedContent = ({
   // 章节级测量：currentTitleId / fingerprint / layout.pageStep / 当前章 blocks 变化时
   // fingerprint 变化时同步在本 effect 内清空旧分页 state，避免 useEffect 异步清空与 layoutEffect 测量之间的时序竞争
   useLayoutEffect(() => {
+    if (paginationMeasureFrameRef.current !== null) {
+      window.cancelAnimationFrame(paginationMeasureFrameRef.current);
+      paginationMeasureFrameRef.current = null;
+    }
     if (currentTitleId === undefined) return;
     if (layout.pageStep <= 0) return;
     const flow = flowRef.current;
@@ -2995,21 +3112,28 @@ const ReaderPagedContent = ({
       return;
     }
 
-    const result = measureChapterPagination(flow, layout.pageStep);
-    if (!result) {
-      if (fingerprintChanged) {
-        setChapterPaginations((prev) => {
-          if (prev.size === 0) return prev;
-          return restoreCachedPaginationBase ? restoreCachedPaginationBase() : new Map();
-        });
-      }
-      return;
+    if (fingerprintChanged) {
+      setChapterPaginations((prev) => {
+        if (prev.size === 0) return prev;
+        return restoreCachedPaginationBase ? restoreCachedPaginationBase() : new Map();
+      });
     }
-    setCachedChapterPagination(bookId, currentTitleId, fingerprint, result);
-    setChapterPaginations((prev) => {
-      const base = restoreCachedPaginationBase ? restoreCachedPaginationBase() : new Map(prev);
-      base.set(currentTitleId, result);
-      return base;
+
+    if (paginationMeasureFrameRef.current !== null) {
+      window.cancelAnimationFrame(paginationMeasureFrameRef.current);
+    }
+    paginationMeasureFrameRef.current = window.requestAnimationFrame(() => {
+      paginationMeasureFrameRef.current = null;
+      const currentFlow = flowRef.current;
+      if (!currentFlow || currentFlow !== flow) return;
+      const result = measureChapterPagination(currentFlow, layout.pageStep);
+      if (!result) return;
+      setCachedChapterPagination(bookId, currentTitleId, fingerprint, result);
+      setChapterPaginations((prev) => {
+        const base = restoreCachedPaginationBase ? restoreCachedPaginationBase() : new Map(prev);
+        base.set(currentTitleId, result);
+        return base;
+      });
     });
   }, [
     bookId,
@@ -3219,13 +3343,15 @@ const ReaderPagedContent = ({
 
   useEffect(() => {
     const refreshLayout = () => {
-      scheduleMeasureLayout({ includeSettledPass: true, rememberLocator: true });
+      rememberCurrentLocator();
+      scheduleContentPaginationMeasure();
+      scheduleMeasureLayout({ includeSettledPass: true });
     };
     window.addEventListener(READER_SETTING_CHANGE_EVENT, refreshLayout);
     return () => {
       window.removeEventListener(READER_SETTING_CHANGE_EVENT, refreshLayout);
     };
-  }, [scheduleMeasureLayout]);
+  }, [rememberCurrentLocator, scheduleContentPaginationMeasure, scheduleMeasureLayout]);
 
   useEffect(() => {
     return () => {
@@ -3234,6 +3360,10 @@ const ReaderPagedContent = ({
       }
       if (contentMeasureFrameRef.current !== null) {
         window.cancelAnimationFrame(contentMeasureFrameRef.current);
+      }
+      if (paginationMeasureFrameRef.current !== null) {
+        window.cancelAnimationFrame(paginationMeasureFrameRef.current);
+        paginationMeasureFrameRef.current = null;
       }
       if (settledMeasureTimerRef.current !== null) {
         window.clearTimeout(settledMeasureTimerRef.current);
@@ -3274,6 +3404,40 @@ const ReaderPagedContent = ({
       window.removeEventListener('pagehide', saveProgress);
     };
   }, [getCurrentLocator]);
+
+  useEffect(() => {
+    if (!bookId || visiblePages !== 2) return;
+    if (currentTitleId === undefined || !currentChapterPagination || layout.pageStep <= 0) return;
+    const flow = flowRef.current;
+    if (!flow) return;
+
+    annotations
+      .filter(
+        (annotation) =>
+          annotation.type === 'bookmark' &&
+          (annotation.titleId === currentTitleId || currentChapterBlockIds.has(annotation.blockId)),
+      )
+      .forEach((annotation) => {
+        const nextPage = resolveRenderedBookmarkPage({
+          annotation,
+          chapterStartPages,
+          flow,
+          layout,
+        });
+        if (nextPage !== undefined && annotation.page !== nextPage) {
+          updateReaderBookmarkPage(bookId, annotation.id, nextPage);
+        }
+      });
+  }, [
+    annotations,
+    bookId,
+    chapterStartPages,
+    currentChapterBlockIds,
+    currentChapterPagination,
+    currentTitleId,
+    layout,
+    visiblePages,
+  ]);
 
   const contentStyle = useMemo(() => {
     const pageWidth = layout.pageWidth || getInitialPageWidth(visiblePages);
@@ -3356,6 +3520,7 @@ const pre = (num: number = 1) => {
   if (pageNum === 0) return;
   const currentSpreadStart = getPagedSpreadStartPage(pageNum, num);
   runPageTurn(getStoredReaderPageTurnEffect(), () => {
+    syncHook.call(EVENT_NAME.CLEAR_READER_PENDING_LOCATOR);
     setPageNum(Math.max(currentSpreadStart - num, 0));
   });
 };
@@ -3366,6 +3531,7 @@ const next = (num: number = 1) => {
   const size: number = textSyntaxTree?.totalPage || 0;
   const currentSpreadStart = getPagedSpreadStartPage(pageNum, num);
   runPageTurn(getStoredReaderPageTurnEffect(), () => {
+    syncHook.call(EVENT_NAME.CLEAR_READER_PENDING_LOCATOR);
     setPageNum(Math.min(currentSpreadStart + num, size));
   });
 };
@@ -3386,8 +3552,24 @@ const loadBookDetailById = (id: string | undefined, navigate: NavigateFunction):
         return;
       }
 
-      setCurrentBookDetail(res.data);
-      setTextSyntaxTree(readerDocumentToTextSyntaxTree(res.data.document));
+      const currentBook = getCurrentBookDetail();
+      const nextTree = getCachedTextSyntaxTree(res.data);
+      const currentTree = getTextSyntaxTree();
+      const bookChanged =
+        currentBook?.id !== res.data.id ||
+        currentBook?.modifyTime !== res.data.modifyTime ||
+        currentBook?.fingerprint !== res.data.fingerprint;
+      const treeChanged =
+        currentTree.rawText !== nextTree.rawText ||
+        currentTree.blocks !== nextTree.blocks ||
+        currentTree.sequences !== nextTree.sequences;
+
+      if (bookChanged) {
+        setCurrentBookDetail(res.data);
+      }
+      if (treeChanged) {
+        setTextSyntaxTree(nextTree);
+      }
     })
     .catch((error) => {
       console.log('error', error);

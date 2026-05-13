@@ -107,6 +107,32 @@ export const loadBookResource = async (bookId: string, resourceKey: string): Pro
   }
 };
 
+export const listBookResources = async (bookId: string): Promise<BookResourceRecord[]> => {
+  if (!bookId) return [];
+  try {
+    const database = await openResourceDB();
+    return await new Promise<BookResourceRecord[]>((resolve) => {
+      const store = database.transaction(RESOURCE_STORE_NAME, 'readonly').objectStore(RESOURCE_STORE_NAME);
+      const index = store.index('byBook');
+      const request = index.openCursor(IDBKeyRange.only(bookId));
+      const records: BookResourceRecord[] = [];
+      request.onsuccess = () => {
+        const cursor = request.result;
+        if (!cursor) {
+          resolve(records);
+          return;
+        }
+        const { primaryKey: _primaryKey, ...record } = cursor.value as PersistedRecord;
+        records.push(record);
+        cursor.continue();
+      };
+      request.onerror = () => resolve(records);
+    });
+  } catch {
+    return [];
+  }
+};
+
 export const deleteBookResources = async (bookId: string): Promise<void> => {
   const store = await ensureWritable();
   if (!store) return;

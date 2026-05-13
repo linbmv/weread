@@ -2,7 +2,7 @@ import { db } from '@/store';
 import { READER_SETTINGS_STORE_NAME } from '@/lib/readerStoreNames';
 import { safeReadStorage, safeWriteStorage } from '@/lib/utils';
 
-interface ReaderSettingRecord {
+export interface ReaderSettingRecord {
   key: string;
   updatedAt: number;
   value: string;
@@ -24,6 +24,29 @@ export const persistReaderSetting = (key: string, value: string): void => {
     },
     storeName: READER_SETTINGS_STORE_NAME,
   });
+};
+
+export const getAllReaderSettings = async (): Promise<ReaderSettingRecord[]> => {
+  const result = await db.readByCursor<ReaderSettingRecord>({ storeName: READER_SETTINGS_STORE_NAME });
+  return result.error ? [] : result.data;
+};
+
+export const restoreReaderSettings = async (records: ReaderSettingRecord[]): Promise<void> => {
+  await Promise.all(
+    records
+      .filter((record) => record?.key && typeof record.value === 'string')
+      .map(async (record) => {
+        writeCachedReaderSetting(record.key, record.value);
+        await db.update<ReaderSettingRecord>({
+          data: {
+            key: record.key,
+            updatedAt: Number.isFinite(record.updatedAt) ? record.updatedAt : Date.now(),
+            value: record.value,
+          },
+          storeName: READER_SETTINGS_STORE_NAME,
+        });
+      }),
+  );
 };
 
 export const hydrateReaderSettingCache = async (): Promise<void> => {

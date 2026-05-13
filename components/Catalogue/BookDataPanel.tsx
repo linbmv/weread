@@ -4,6 +4,8 @@ import type { TextSyntaxTree } from '@/lib/transformText';
 import { BookCoverFallback } from '@/components/BookCard';
 import { ChevronDownIcon, ChevronUpIcon } from '@/components/Catalogue/BookDataPanelIcons';
 import { buildBookDataPanelData, getMonthBarWidth } from '@/components/Catalogue/bookDataPanelData';
+import { createSingleBookBackup, downloadBlob } from '@/lib/backup/exportBackup';
+import { showGlobalFallback } from '@/lib/globalFallback';
 
 interface BookDataPanelProps {
   bookDetail: BookInfo | null;
@@ -77,9 +79,20 @@ export const BookDataPanel = ({
     window.setTimeout(() => setAnimateBars(true), 50);
   }, []);
 
-  const shareCurrentBook = useCallback(() => {
-    void navigator.clipboard?.writeText(window.location.href);
-  }, []);
+  const exportCurrentBook = useCallback(
+    (includeBook: boolean) => {
+      if (!bookDetail?.id) return;
+      void createSingleBookBackup({ bookId: bookDetail.id, includeBook })
+        .then(({ blob, fileName }) => {
+          downloadBlob(blob, fileName);
+          showGlobalFallback({ message: includeBook ? '已导出全本备份' : '已导出用户数据备份', tone: 'success' });
+        })
+        .catch((error: unknown) => {
+          showGlobalFallback({ message: error instanceof Error ? error.message : '导出失败', tone: 'error' });
+        });
+    },
+    [bookDetail?.id],
+  );
 
   const stopPanelEvent = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
     event.stopPropagation();
@@ -99,18 +112,18 @@ export const BookDataPanel = ({
   return (
     <div className="reader-catalog-data-overlay" data-state={open ? 'open' : 'closed'} onMouseDown={closeFromBackdrop}>
       <div
-        className="reader-catalog-data-sheet bg-[#1e1e1e] w-full shadow-2xl overflow-hidden relative text-white"
+        className="reader-catalog-data-sheet w-full shadow-2xl overflow-hidden relative"
         onMouseDown={stopPanelEvent}
       >
         <div className="p-6 pb-5">
           <div className="flex justify-between items-start mb-6 mt-2">
             <div className="flex-1 pr-6 flex flex-col justify-between min-w-0">
-              <h2 className="text-[20px] font-bold text-gray-100 leading-snug tracking-wide line-clamp-2">
+              <h2 className="reader-catalog-data-title text-[20px] font-bold leading-snug tracking-wide line-clamp-2">
                 {bookData.title}
               </h2>
-              <div className="mt-3 text-[13px] text-gray-400">上次阅读 · {bookData.lastRead}</div>
+              <div className="reader-catalog-data-muted mt-3 text-[13px]">上次阅读 · {bookData.lastRead}</div>
             </div>
-            <div className="w-[72px] h-[100px] flex-shrink-0 rounded shadow-md overflow-hidden bg-white/5 border border-white/10">
+            <div className="reader-catalog-data-cover w-[72px] h-[100px] flex-shrink-0 rounded shadow-md overflow-hidden border">
               {coverUrl && !coverFailed ? (
                 <img
                   className="w-full h-full object-cover"
@@ -124,56 +137,62 @@ export const BookDataPanel = ({
             </div>
           </div>
 
-          <div className="bg-[#2a2a2a] rounded-[16px] p-5 mb-4">
+          <div className="reader-catalog-data-card rounded-[16px] p-5 mb-4">
             <div className="flex justify-around mb-2 mt-1">
               <div className="flex flex-col items-center justify-center px-1">
-                <span className="text-[13px] text-gray-400 mb-1">总字数</span>
+                <span className="reader-catalog-data-label text-[13px] mb-1">总字数</span>
                 <div className="flex items-baseline gap-[2px]">
-                  <span className="text-[26px] font-semibold text-gray-100">{bookData.totalWords.value}</span>
-                  <span className="text-[12px] text-gray-300 font-normal">{bookData.totalWords.unit}</span>
+                  <span className="reader-catalog-data-value text-[26px] font-semibold">{bookData.totalWords.value}</span>
+                  <span className="reader-catalog-data-unit text-[12px] font-normal">{bookData.totalWords.unit}</span>
                 </div>
               </div>
 
               <div className="flex flex-col items-center justify-center px-1">
-                <span className="text-[13px] text-gray-400 mb-1">阅读天数</span>
+                <span className="reader-catalog-data-label text-[13px] mb-1">阅读天数</span>
                 <div className="flex items-baseline gap-[2px]">
-                  <span className="text-[26px] font-semibold text-gray-100">{bookData.readingDays}</span>
-                  <span className="text-[12px] text-gray-300 font-normal">天</span>
+                  <span className="reader-catalog-data-value text-[26px] font-semibold">{bookData.readingDays}</span>
+                  <span className="reader-catalog-data-unit text-[12px] font-normal">天</span>
                 </div>
               </div>
 
               <div className="flex flex-col items-center justify-center px-1">
-                <span className="text-[13px] text-gray-400 mb-1">阅读进度</span>
+                <span className="reader-catalog-data-label text-[13px] mb-1">阅读进度</span>
                 <div className="flex items-baseline gap-[2px]">
-                  <span className="text-[26px] font-semibold text-gray-100">{bookData.readPercent}</span>
-                  <span className="text-[12px] text-gray-300 font-normal">%</span>
+                  <span className="reader-catalog-data-value text-[26px] font-semibold">{bookData.readPercent}</span>
+                  <span className="reader-catalog-data-unit text-[12px] font-normal">%</span>
                 </div>
               </div>
             </div>
           </div>
 
-          <div className="bg-[#2a2a2a] rounded-[16px] p-5">
+          <div className="reader-catalog-data-card rounded-[16px] p-5">
             <div className="flex justify-between mb-6 px-1">
               <div className="flex-1 min-w-0">
-                <div className="text-[13px] text-gray-400 mb-1">累计时长</div>
+                <div className="reader-catalog-data-label text-[13px] mb-1">累计时长</div>
                 <div className="flex items-baseline gap-[2px]">
-                  <span className="text-[22px] font-bold text-gray-100">{bookData.totalDuration.hours}</span>
-                  <span className="text-[12px] text-gray-300 font-normal mr-1">小时</span>
-                  <span className="text-[22px] font-bold text-gray-100">{bookData.totalDuration.minutes}</span>
-                  <span className="text-[12px] text-gray-300 font-normal">分钟</span>
+                  <span className="reader-catalog-data-value text-[22px] font-bold">{bookData.totalDuration.hours}</span>
+                  <span className="reader-catalog-data-unit text-[12px] font-normal mr-1">小时</span>
+                  <span className="reader-catalog-data-value text-[22px] font-bold">
+                    {bookData.totalDuration.minutes}
+                  </span>
+                  <span className="reader-catalog-data-unit text-[12px] font-normal">分钟</span>
                 </div>
-                <div className="text-[11px] text-gray-500 mt-1">{bookData.startLabel}</div>
+                <div className="reader-catalog-data-subtle text-[11px] mt-1">{bookData.startLabel}</div>
               </div>
 
               <div className="flex-1 pl-6 min-w-0">
-                <div className="text-[13px] text-gray-400 mb-1">单日阅读最久</div>
+                <div className="reader-catalog-data-label text-[13px] mb-1">单日阅读最久</div>
                 <div className="flex items-baseline gap-[2px]">
-                  <span className="text-[22px] font-bold text-gray-100">{bookData.maxDailyDuration.hours}</span>
-                  <span className="text-[12px] text-gray-300 font-normal mr-1">小时</span>
-                  <span className="text-[22px] font-bold text-gray-100">{bookData.maxDailyDuration.minutes}</span>
-                  <span className="text-[12px] text-gray-300 font-normal">分钟</span>
+                  <span className="reader-catalog-data-value text-[22px] font-bold">
+                    {bookData.maxDailyDuration.hours}
+                  </span>
+                  <span className="reader-catalog-data-unit text-[12px] font-normal mr-1">小时</span>
+                  <span className="reader-catalog-data-value text-[22px] font-bold">
+                    {bookData.maxDailyDuration.minutes}
+                  </span>
+                  <span className="reader-catalog-data-unit text-[12px] font-normal">分钟</span>
                 </div>
-                <div className="text-[11px] text-gray-500 mt-1">{bookData.maxDailyDate}</div>
+                <div className="reader-catalog-data-subtle text-[11px] mt-1">{bookData.maxDailyDate}</div>
               </div>
             </div>
 
@@ -193,13 +212,13 @@ export const BookDataPanel = ({
                       <div className="flex flex-col" key={record.monthKey}>
                         {isExpanded ? (
                           <div className="flex justify-between items-center px-1 mb-1 mt-1">
-                            <div className="text-[14px] text-gray-300">
+                            <div className="reader-catalog-data-month-summary text-[14px]">
                               <span className="font-bold">{record.month}</span>
                               <span className="mx-1">·</span>
                               <span className="font-bold">{record.time}</span>
                             </div>
                             <button
-                              className="w-7 h-7 flex items-center justify-center bg-white/10 rounded-full hover:bg-white/20 transition-colors"
+                              className="reader-catalog-data-icon-button w-7 h-7 flex items-center justify-center rounded-full transition-colors"
                               type="button"
                               onClick={() => handleExpand(index)}
                             >
@@ -208,16 +227,16 @@ export const BookDataPanel = ({
                           </div>
                         ) : (
                           <button
-                            className="relative w-full h-[28px] bg-[#282828] rounded-[6px] flex items-center px-3 cursor-pointer hover:opacity-90 transition-opacity overflow-hidden text-left"
+                            className="reader-catalog-data-month-row relative w-full h-[28px] rounded-[6px] flex items-center px-3 cursor-pointer hover:opacity-90 transition-opacity overflow-hidden text-left"
                             type="button"
                             onClick={() => handleExpand(index)}
                           >
                             <div
-                              className="absolute left-0 top-0 bottom-0 bg-gradient-to-r from-[#5bcdae] to-[#45b799] rounded-[6px] transition-[width] duration-300 ease-out"
+                              className="reader-catalog-data-month-bar absolute left-0 top-0 bottom-0 rounded-[6px] transition-[width] duration-300 ease-out"
                               style={{ width: barWidth }}
                             ></div>
 
-                            <div className="relative z-10 w-full flex justify-between items-center text-[14px] text-white">
+                            <div className="reader-catalog-data-bar-text relative z-10 w-full flex justify-between items-center text-[14px]">
                               <div>
                                 <span className="font-bold">{record.month}</span>
                                 <span className="mx-1">·</span>
@@ -238,16 +257,19 @@ export const BookDataPanel = ({
                               const dayBarWidth = isExpanded && animateBars ? `${day.calculatedProgress}%` : '0%';
 
                               return (
-                                <div className="relative w-full h-[28px] bg-[#1e2227] rounded-[6px]" key={day.dayKey}>
+                                <div
+                                  className="reader-catalog-data-day-row relative w-full h-[28px] rounded-[6px]"
+                                  key={day.dayKey}
+                                >
                                   <div
-                                    className="absolute left-0 top-0 bottom-0 bg-gradient-to-r from-[#68b5e6] to-[#4b9ee2] rounded-[6px] transition-[width] duration-[300ms] ease-out overflow-hidden"
+                                    className="reader-catalog-data-day-bar absolute left-0 top-0 bottom-0 rounded-[6px] transition-[width] duration-[300ms] ease-out overflow-hidden"
                                     style={{ width: dayBarWidth }}
                                   >
                                     <div className="h-full w-full flex justify-between items-center px-3">
-                                      <span className="text-[13px] font-medium text-white whitespace-nowrap">
+                                      <span className="reader-catalog-data-bar-text text-[13px] font-medium whitespace-nowrap">
                                         {day.date}
                                       </span>
-                                      <span className="text-[13px] font-bold text-white whitespace-nowrap">
+                                      <span className="reader-catalog-data-bar-text text-[13px] font-bold whitespace-nowrap">
                                         {day.time}
                                       </span>
                                     </div>
@@ -261,7 +283,7 @@ export const BookDataPanel = ({
                     );
                   })
                 ) : (
-                  <div className="h-[44px] flex items-center justify-center text-[13px] text-gray-500">
+                  <div className="reader-catalog-data-empty h-[44px] flex items-center justify-center text-[13px]">
                     暂无阅读记录
                   </div>
                 )}
@@ -272,17 +294,18 @@ export const BookDataPanel = ({
 
         <div className="flex gap-3 px-6 pb-6 pt-2">
           <button
-            className="flex-1 bg-[#3a3a3a] hover:bg-[#4a4a4a] text-[#e0e0e0] py-[14px] rounded-[12px] font-medium text-[15px] transition-colors"
+            className="reader-catalog-data-button reader-catalog-data-button-secondary flex-1 py-[14px] rounded-[12px] font-medium text-[15px] transition-colors"
             type="button"
+            onClick={() => exportCurrentBook(false)}
           >
             导出用户数据
           </button>
           <button
-            className="flex-1 bg-[#0095ff] hover:bg-[#0084eb] text-white py-[14px] rounded-[12px] font-medium text-[15px] transition-colors shadow-lg shadow-blue-500/20"
+            className="reader-catalog-data-button reader-catalog-data-button-primary flex-1 py-[14px] rounded-[12px] font-medium text-[15px] transition-colors shadow-lg shadow-blue-500/20"
             type="button"
-            onClick={shareCurrentBook}
+            onClick={() => exportCurrentBook(true)}
           >
-            分享此书
+            导出全本
           </button>
         </div>
       </div>

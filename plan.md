@@ -59,7 +59,7 @@ weread-backup.zip
    - `readerAnnotations`
    - `readerProgress`
    - `readerSettings`
-   - 后续如果新增用户数据模块，需要纳入 `manifest` 和迁移函数。
+   - 其他用户书籍模块。
 
 ## 恢复策略
 

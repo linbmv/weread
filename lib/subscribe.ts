@@ -31,6 +31,7 @@ export enum EVENT_NAME {
   SET_CURRENT_BOOK_PAGE = 'set-current-book-page',
   SET_CURRENT_BOOK_DETAIL = 'set-current-book-detail',
   ADD_READER_PAGE_BOOKMARK = 'add-reader-page-bookmark',
+  CLEAR_READER_PENDING_LOCATOR = 'clear-reader-pending-locator',
   SET_READER_ANNOTATIONS = 'set-reader-annotations',
   SET_READER_NAVIGATION_TARGET = 'set-reader-navigation-target',
   SET_READER_PROGRESS = 'set-reader-progress',

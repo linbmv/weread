@@ -153,12 +153,77 @@ export const deleteReaderAnnotationsForBook = (bookId?: string | null): void => 
   emitAnnotationChange();
 };
 
+export const restoreReaderAnnotationsForBook = async ({
+  annotations,
+  bookId,
+  sourceBookId,
+}: {
+  annotations: ReaderAnnotation[];
+  bookId: string;
+  sourceBookId: string;
+}): Promise<void> => {
+  const map = readAnnotationMap();
+  const previous = map[bookId] || [];
+  await Promise.all(previous.map((annotation) => db.delete({ key: annotation.id, storeName: ANNOTATION_STORAGE_KEY })));
+
+  const nextAnnotations = annotations
+    .filter((annotation) => annotation?.id && annotation.bookId === sourceBookId)
+    .map((annotation) => ({
+      ...annotation,
+      bookId,
+      groupId: annotation.groupId && sourceBookId !== bookId ? `${bookId}:${annotation.groupId}` : annotation.groupId,
+      id: sourceBookId === bookId ? annotation.id : `${bookId}:${annotation.id}`,
+    }));
+
+  map[bookId] = nextAnnotations;
+  writeAnnotationMap(map);
+  await Promise.all(
+    nextAnnotations.map((annotation) =>
+      db.update<ReaderAnnotation>({
+        data: annotation,
+        storeName: ANNOTATION_STORAGE_KEY,
+      }),
+    ),
+  );
+  emitAnnotationChange();
+};
+
 export const getReaderBookmarkForPage = (
   bookId: string | undefined | null,
   page: number,
 ): ReaderAnnotation | undefined => {
   if (!bookId || !Number.isFinite(page)) return undefined;
   return getReaderAnnotations(bookId).find((annotation) => annotation.type === 'bookmark' && annotation.page === page);
+};
+
+export const updateReaderBookmarkPage = (
+  bookId: string | undefined | null,
+  annotationId: string,
+  page: number,
+): boolean => {
+  if (!bookId || !annotationId || !Number.isFinite(page)) return false;
+  const map = readAnnotationMap();
+  const list = map[bookId] || [];
+  let changed = false;
+  const nextPage = Math.max(0, Math.floor(page));
+  const nextList = list.map((annotation) => {
+    if (annotation.id !== annotationId || annotation.type !== 'bookmark' || annotation.page === nextPage) {
+      return annotation;
+    }
+    changed = true;
+    const nextAnnotation = {
+      ...annotation,
+      page: nextPage,
+      updatedAt: Date.now(),
+    };
+    persistAnnotation(nextAnnotation);
+    return nextAnnotation;
+  });
+  if (!changed) return false;
+  map[bookId] = nextList;
+  writeAnnotationMap(map);
+  emitAnnotationChange();
+  return true;
 };
 
 export const saveReaderBookmark = (bookId: string, draft: ReaderBookmarkDraft): ReaderAnnotation | undefined => {
