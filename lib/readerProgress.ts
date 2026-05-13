@@ -3,6 +3,7 @@ import { EVENT_NAME, syncHook } from '@/lib/subscribe';
 import { db } from '@/store';
 import { recordReaderReadingTime } from '@/lib/readerReadingTime';
 import { READER_PROGRESS_STORE_NAME } from '@/lib/readerStoreNames';
+import { clampRatio } from '@/lib/utils';
 
 export interface ReaderLocator {
   bookId: string;
@@ -28,11 +29,6 @@ const STORAGE_KEY = 'weread-reader-progress';
 
 const clampPage = (page: number, totalPage: number): number => {
   return Math.min(Math.max(page, 0), Math.max(totalPage, 0));
-};
-
-const clampRatio = (value: number): number => {
-  if (!Number.isFinite(value)) return 0;
-  return Math.min(Math.max(value, 0), 1);
 };
 
 const normalizeVisiblePages = (value?: number): number => {
@@ -143,6 +139,26 @@ const findScrollAnchorElement = (
   contentElement: HTMLElement,
   anchorY: number,
 ): { element: HTMLElement; ratio: number } | undefined => {
+  // Fast path: ask the browser which element is at anchorY (O(1) hit-test) and
+  // walk to the nearest [data-reader-block-id]. Avoids reading bounding rects
+  // for every block in long chapters (was the dominant cost during scroll save).
+  if (typeof document !== 'undefined') {
+    const containerRect = contentElement.getBoundingClientRect();
+    const probeX = containerRect.left + containerRect.width / 2;
+    const hit = document.elementFromPoint(probeX, anchorY);
+    if (hit instanceof Element) {
+      const block = hit.closest<HTMLElement>('[data-reader-block-id]');
+      if (block && contentElement.contains(block)) {
+        const rect = block.getBoundingClientRect();
+        if (rect.height > 0) {
+          return { element: block, ratio: clampRatio((anchorY - rect.top) / rect.height) };
+        }
+      }
+    }
+  }
+
+  // Fallback: when anchorY lands in a paragraph gap or outside any block (e.g.
+  // start/end of chapter), pick the nearest block by linear scan.
   const blockElements = Array.from(contentElement.querySelectorAll<HTMLElement>('[data-reader-block-id]'));
   let fallbackElement: HTMLElement | undefined;
   let fallbackRatio = 0;

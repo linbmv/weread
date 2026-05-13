@@ -1,5 +1,4 @@
 import { WebDB } from '@/lib/indexedDB';
-import { createBookStore } from '@/store/books';
 import { hydrateReaderAnnotations } from '@/lib/readerAnnotations';
 import { hydrateReaderProgress } from '@/lib/readerProgress';
 import { hydrateReaderReadingTime } from '@/lib/readerReadingTime';
@@ -20,10 +19,7 @@ const hydrateReaderData = async (): Promise<void> => {
 
 export const initDB = (): Promise<boolean> => {
   return db.openDataBase().then(async (result) => {
-    if (result.status !== 'success') {
-      createBookStore();
-      return false;
-    }
+    if (result.status !== 'success') return false;
     await hydrateReaderData();
     return true;
   });
@@ -37,7 +33,6 @@ export const resumeDB = (): Promise<boolean> => {
     db.refreshDatabase()
       .then(async (result) => {
         if (result.status !== 'success') {
-          createBookStore();
           resolve(false);
           return;
         }

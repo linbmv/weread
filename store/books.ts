@@ -33,10 +33,6 @@ export const BOOK_STORE_RESULT_REASON = {
 
 export type BookStoreResultReason = (typeof BOOK_STORE_RESULT_REASON)[keyof typeof BOOK_STORE_RESULT_REASON];
 
-export const createBookStore = (): void => {
-  db.createObjectStore({ storeName: STORE_NAME_BOOKS_INFO_KEY, options: { keyPath: 'id' } });
-};
-
 export const getBookFingerprint = async (data: {
   author: string;
   document: ReaderBookDocument;
@@ -72,19 +68,45 @@ const errorResult = <T>(message: string, fallback?: T): IDBResult<T> => ({
 });
 
 let dbWorker: Worker | null = null;
+const pendingWorkerOperations = new Map<
+  string,
+  { resolve: (result: IDBResult<unknown>) => void; timer: number }
+>();
+
+interface WorkerResponseEnvelope<T> extends IDBResult<T> {
+  operationId: string;
+}
+
+const handleWorkerMessage = (event: MessageEvent<WorkerResponseEnvelope<unknown>>): void => {
+  const operationId = event.data?.operationId;
+  if (!operationId) return;
+  const pending = pendingWorkerOperations.get(operationId);
+  if (!pending) return;
+  pendingWorkerOperations.delete(operationId);
+  clearTimeout(pending.timer);
+  const { operationId: _operationId, ...rest } = event.data;
+  pending.resolve(rest as IDBResult<unknown>);
+};
+
+const handleWorkerError = (event: ErrorEvent): void => {
+  const message = event.message || 'Worker error';
+  for (const [, pending] of pendingWorkerOperations) {
+    clearTimeout(pending.timer);
+    pending.resolve(errorResult(message));
+  }
+  pendingWorkerOperations.clear();
+};
 
 const getDBWorker = (): Worker => {
   if (!dbWorker) {
     dbWorker = new Worker(new URL('../workers/dbWorker.ts', import.meta.url), {
       type: 'module',
     });
+    dbWorker.addEventListener('message', handleWorkerMessage);
+    dbWorker.addEventListener('error', handleWorkerError);
   }
   return dbWorker;
 };
-
-interface WorkerResponseEnvelope<T> extends IDBResult<T> {
-  operationId: string;
-}
 
 const performWorkerOperation = <T = unknown>(
   type: string,
@@ -99,41 +121,15 @@ const performWorkerOperation = <T = unknown>(
     const worker = getDBWorker();
     const operationId = createRandomId('op');
 
-    let settled = false;
-    let timer: number | undefined;
-
-    const cleanup = (): void => {
-      worker.removeEventListener('message', messageHandler);
-      worker.removeEventListener('error', errorHandler);
-      if (timer !== undefined) {
-        clearTimeout(timer);
-        timer = undefined;
-      }
-    };
-
-    const settle = (result: IDBResult<T>): void => {
-      if (settled) return;
-      settled = true;
-      cleanup();
-      resolve(result);
-    };
-
-    const messageHandler = (event: MessageEvent<WorkerResponseEnvelope<T>>): void => {
-      if (event.data?.operationId !== operationId) return;
-      const { operationId: _operationId, ...rest } = event.data;
-      settle(rest as IDBResult<T>);
-    };
-
-    const errorHandler = (event: ErrorEvent): void => {
-      settle(errorResult<T>(event.message || 'Worker error'));
-    };
-
-    worker.addEventListener('message', messageHandler);
-    worker.addEventListener('error', errorHandler);
-
-    timer = window.setTimeout(() => {
-      settle(errorResult<T>('Worker operation timed out'));
+    const timer = window.setTimeout(() => {
+      if (!pendingWorkerOperations.delete(operationId)) return;
+      resolve(errorResult<T>('Worker operation timed out'));
     }, PENDING_OPERATION_TIMEOUT_MS);
+
+    pendingWorkerOperations.set(operationId, {
+      resolve: resolve as (result: IDBResult<unknown>) => void,
+      timer,
+    });
 
     try {
       worker.postMessage({
@@ -144,7 +140,9 @@ const performWorkerOperation = <T = unknown>(
         operationId,
       });
     } catch (error) {
-      settle(errorResult<T>(getErrorMessage(error, 'Failed to dispatch worker message')));
+      if (!pendingWorkerOperations.delete(operationId)) return;
+      clearTimeout(timer);
+      resolve(errorResult<T>(getErrorMessage(error, 'Failed to dispatch worker message')));
     }
   });
 };

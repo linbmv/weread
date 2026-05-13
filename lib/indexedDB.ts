@@ -194,17 +194,20 @@ export class WebDB {
   };
   readByCursor = <T = unknown>({
     storeName,
+    indexName,
     keyRange,
     direction,
   }: {
     storeName: string;
+    indexName?: string;
     keyRange?: IDBKeyRange;
     direction?: IDBCursorDirection;
   }): Promise<IDBResult<T[]>> => {
     return new Promise<IDBResult<T[]>>((resolve) => {
       const store = this.getObjectStore(storeName);
       if (!store) return resolve(errorResult<T[]>('Database not initialized', []));
-      const request = store.openCursor(keyRange, direction);
+      const source: IDBObjectStore | IDBIndex = indexName ? store.index(indexName) : store;
+      const request = source.openCursor(keyRange, direction);
       const result: T[] = [];
       request.onsuccess = () => {
         const cursor = request.result;
@@ -216,6 +219,32 @@ export class WebDB {
         }
       };
       request.onerror = () => resolve(errorResult<T[]>(request.error?.message || 'read cursor error', result));
+    });
+  };
+  deleteByCursor = ({
+    storeName,
+    indexName,
+    keyRange,
+  }: {
+    storeName: string;
+    indexName?: string;
+    keyRange?: IDBKeyRange;
+  }): Promise<IDBResult<null>> => {
+    return new Promise<IDBResult<null>>((resolve) => {
+      const store = this.getObjectStore(storeName, 'readwrite');
+      if (!store) return resolve(errorResult('Database not initialized', null));
+      const source: IDBObjectStore | IDBIndex = indexName ? store.index(indexName) : store;
+      const request = source.openKeyCursor(keyRange);
+      request.onsuccess = () => {
+        const cursor = request.result;
+        if (!cursor) {
+          resolve(successResult(null));
+          return;
+        }
+        store.delete(cursor.primaryKey);
+        cursor.continue();
+      };
+      request.onerror = () => resolve(errorResult(request.error?.message || 'delete cursor error', null));
     });
   };
   delete = ({ storeName, key }: { storeName: string; key: IDBValidKey }): Promise<IDBResult<null>> => {

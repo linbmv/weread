@@ -153,13 +153,22 @@ export const getReaderReadingTimeRecordsForBook = async (
   segments: ReaderReadingTimeSegment[];
 }> => {
   if (!bookId) return { daily: [], segments: [] };
+  const keyRange = IDBKeyRange.only(bookId);
   const [dailyResult, segmentResult] = await Promise.all([
-    db.readByCursor<ReaderReadingTimeDailyAggregate>({ storeName: READER_READING_TIME_DAILY_STORE_NAME }),
-    db.readByCursor<ReaderReadingTimeSegment>({ storeName: READER_READING_TIME_SEGMENTS_STORE_NAME }),
+    db.readByCursor<ReaderReadingTimeDailyAggregate>({
+      storeName: READER_READING_TIME_DAILY_STORE_NAME,
+      indexName: 'bookId',
+      keyRange,
+    }),
+    db.readByCursor<ReaderReadingTimeSegment>({
+      storeName: READER_READING_TIME_SEGMENTS_STORE_NAME,
+      indexName: 'bookId',
+      keyRange,
+    }),
   ]);
   return {
-    daily: dailyResult.error ? [] : dailyResult.data.filter((record) => record.bookId === bookId),
-    segments: segmentResult.error ? [] : segmentResult.data.filter((segment) => segment.bookId === bookId),
+    daily: dailyResult.error ? [] : dailyResult.data,
+    segments: segmentResult.error ? [] : segmentResult.data,
   };
 };
 
@@ -174,24 +183,17 @@ export const restoreReaderReadingTimeForBook = async ({
   segments: ReaderReadingTimeSegment[];
   sourceBookId: string;
 }): Promise<void> => {
-  const [existingDaily, existingSegments] = await Promise.all([
-    db.readByCursor<ReaderReadingTimeDailyAggregate>({ storeName: READER_READING_TIME_DAILY_STORE_NAME }),
-    db.readByCursor<ReaderReadingTimeSegment>({ storeName: READER_READING_TIME_SEGMENTS_STORE_NAME }),
-  ]);
-  const deleteDaily = existingDaily.error
-    ? []
-    : existingDaily.data
-        .filter((record) => record.bookId === bookId)
-        .map((record) => {
-          dailyAggregateCache.delete(record.id);
-          return db.delete({ key: record.id, storeName: READER_READING_TIME_DAILY_STORE_NAME });
-        });
-  const deleteSegments = existingSegments.error
-    ? []
-    : existingSegments.data
-        .filter((segment) => segment.bookId === bookId)
-        .map((segment) => db.delete({ key: segment.id, storeName: READER_READING_TIME_SEGMENTS_STORE_NAME }));
-  await Promise.all([...deleteDaily, ...deleteSegments]);
+  const existingDailyForBook = Array.from(dailyAggregateCache.values()).filter((record) => record.bookId === bookId);
+  const deleteDaily = existingDailyForBook.map((record) => {
+    dailyAggregateCache.delete(record.id);
+    return db.delete({ key: record.id, storeName: READER_READING_TIME_DAILY_STORE_NAME });
+  });
+  const deleteSegments = db.deleteByCursor({
+    storeName: READER_READING_TIME_SEGMENTS_STORE_NAME,
+    indexName: 'bookId',
+    keyRange: IDBKeyRange.only(bookId),
+  });
+  await Promise.all([...deleteDaily, deleteSegments]);
 
   const restoreDaily = daily
     .filter((record) => record?.dayKey)
@@ -234,12 +236,9 @@ export const deleteReaderReadingTimeForBook = (bookId?: string | null): void => 
       void db.delete({ key: record.id, storeName: READER_READING_TIME_DAILY_STORE_NAME });
     });
 
-  void db.readByCursor<ReaderReadingTimeSegment>({ storeName: READER_READING_TIME_SEGMENTS_STORE_NAME }).then((result) => {
-    if (result.error) return;
-    result.data.forEach((segment) => {
-      if (segment.bookId === bookId) {
-        void db.delete({ key: segment.id, storeName: READER_READING_TIME_SEGMENTS_STORE_NAME });
-      }
-    });
+  void db.deleteByCursor({
+    storeName: READER_READING_TIME_SEGMENTS_STORE_NAME,
+    indexName: 'bookId',
+    keyRange: IDBKeyRange.only(bookId),
   });
 };

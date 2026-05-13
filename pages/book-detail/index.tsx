@@ -151,6 +151,23 @@ const useReaderReadingTimeTracker = (
     const isReadingBlocked = () =>
       getReaderControlPanelActive() || hasDetachedReaderPopoverPanel() || !contentVisibleRef.current;
 
+    // markActivity may fire on every wheel/scroll/touchstart event (60+/s during
+    // active reading). Cache the result of isReadingBlocked to avoid running a
+    // document-wide querySelectorAll on the hot path; refresh at most every
+    // BLOCK_CHECK_INTERVAL_MS, plus immediately on control panel events.
+    const BLOCK_CHECK_INTERVAL_MS = 250;
+    let lastBlockCheckAt = -BLOCK_CHECK_INTERVAL_MS;
+    let cachedBlocked = false;
+    const getCachedBlocked = (now: number): boolean => {
+      if (now - lastBlockCheckAt < BLOCK_CHECK_INTERVAL_MS) return cachedBlocked;
+      lastBlockCheckAt = now;
+      cachedBlocked = isReadingBlocked();
+      return cachedBlocked;
+    };
+    const invalidateBlockedCache = (): void => {
+      lastBlockCheckAt = -BLOCK_CHECK_INTERVAL_MS;
+    };
+
     const flush = (now = getPerformanceNow()) => {
       const state = stateRef.current;
       if (!state.running || state.lastTickAt <= 0 || state.lastActiveAt <= 0) return;
@@ -171,11 +188,11 @@ const useReaderReadingTimeTracker = (
     };
 
     const markActivity = () => {
-      if (isReadingBlocked()) {
+      const now = getPerformanceNow();
+      if (getCachedBlocked(now)) {
         pause();
         return;
       }
-      const now = getPerformanceNow();
       const state = stateRef.current;
       if (state.running && now >= state.lastActiveAt + READER_ACTIVE_IDLE_TIMEOUT_MS) {
         flush(now);
@@ -194,6 +211,7 @@ const useReaderReadingTimeTracker = (
     };
 
     const flushActiveReadingTime = () => {
+      invalidateBlockedCache();
       if (isReadingBlocked()) {
         pause();
         return;
@@ -202,6 +220,7 @@ const useReaderReadingTimeTracker = (
     };
 
     const onVisibilityChange = () => {
+      invalidateBlockedCache();
       if (document.visibilityState === 'visible') {
         markActivity();
         return;
@@ -210,6 +229,7 @@ const useReaderReadingTimeTracker = (
     };
 
     const onControlPanelActiveChange = () => {
+      invalidateBlockedCache();
       if (isReadingBlocked()) {
         pause();
         return;
@@ -335,26 +355,24 @@ interface ClientRectLike {
   width: number;
 }
 
+const getRectProbeElement = (rect: ClientRectLike, container: HTMLElement): Element | null => {
+  const probeX = rect.width >= 2 ? rect.left + rect.width / 2 : rect.left + 1;
+  const probeY = rect.top + rect.height / 2;
+  const target = document.elementFromPoint(probeX, probeY);
+  return target instanceof Element && container.contains(target) ? target : null;
+};
+
 const getRectFontSize = (
   rect: ClientRectLike,
   container: HTMLElement,
   fallback: number,
   cache: Map<HTMLElement, number>,
 ): number => {
-  const probeX = rect.width >= 2 ? rect.left + rect.width / 2 : rect.left + 1;
-  const probeY = rect.top + rect.height / 2;
-  const target = document.elementFromPoint(probeX, probeY);
-  if (!(target instanceof Element) || !container.contains(target)) return fallback;
+  const target = getRectProbeElement(rect, container);
+  if (!target) return fallback;
   const block = target.closest<HTMLElement>('.reader-content-block');
   if (!block || !container.contains(block)) return fallback;
   return getBlockFontSize(block, cache, fallback);
-};
-
-const getRectProbeElement = (rect: ClientRectLike, container: HTMLElement): Element | null => {
-  const probeX = rect.width >= 2 ? rect.left + rect.width / 2 : rect.left + 1;
-  const probeY = rect.top + rect.height / 2;
-  const target = document.elementFromPoint(probeX, probeY);
-  return target instanceof Element && container.contains(target) ? target : null;
 };
 
 const getSelectionClipRect = (container: HTMLElement): DOMRect => {
@@ -666,6 +684,21 @@ const writeClipboardText = async (text: string): Promise<boolean> => {
   } finally {
     textarea.remove();
   }
+};
+
+const useReaderAnnotationsForBook = (bookId: string | undefined): ReaderAnnotation[] => {
+  const [annotations, setAnnotations] = useState<ReaderAnnotation[]>(() => getReaderAnnotations(bookId));
+  useEffect(() => {
+    const updateAnnotations = () => {
+      setAnnotations(getReaderAnnotations(bookId));
+    };
+    updateAnnotations();
+    syncHook.tap(EVENT_NAME.SET_READER_ANNOTATIONS, updateAnnotations);
+    return () => {
+      syncHook.off(EVENT_NAME.SET_READER_ANNOTATIONS, updateAnnotations);
+    };
+  }, [bookId]);
+  return annotations;
 };
 
 const useReaderSelectionOverlay = (
@@ -1048,6 +1081,45 @@ const SelectionMenuIcon = ({
   </span>
 );
 
+const READER_OVERLAY_UNMOUNT_DELAY_MS = 140;
+
+// Keeps an overlay (selection menu / note modal) mounted briefly after `state`
+// becomes null so the CSS close animation can run, then unmounts.
+const useDelayedUnmount = <T,>(state: T | null): { renderState: T | null; isClosing: boolean } => {
+  const [renderState, setRenderState] = useState<T | null>(state);
+  const [isClosing, setIsClosing] = useState(false);
+  const closeTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (closeTimerRef.current !== null) {
+      window.clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = null;
+    }
+    if (state) {
+      setRenderState(state);
+      setIsClosing(false);
+      return;
+    }
+    if (!renderState) return;
+    setIsClosing(true);
+    closeTimerRef.current = window.setTimeout(() => {
+      setRenderState(null);
+      setIsClosing(false);
+      closeTimerRef.current = null;
+    }, READER_OVERLAY_UNMOUNT_DELAY_MS);
+  }, [renderState, state]);
+
+  useEffect(() => {
+    return () => {
+      if (closeTimerRef.current !== null) {
+        window.clearTimeout(closeTimerRef.current);
+      }
+    };
+  }, []);
+
+  return { renderState, isClosing };
+};
+
 const formatAnnotationTime = (value: number): string => {
   if (!Number.isFinite(value) || value <= 0) return '';
   const date = new Date(value);
@@ -1072,41 +1144,12 @@ const ReaderSelectionMenu = ({
 }: ReaderSelectionMenuProps): React.JSX.Element | null => {
   const [appliedSelectionType, setAppliedSelectionType] = useState<ReaderStyleAnnotationType | null>(null);
   const [appliedAnnotationIds, setAppliedAnnotationIds] = useState<string[]>([]);
-  const [renderState, setRenderState] = useState<ReaderSelectionMenuState | null>(state);
-  const [isClosing, setIsClosing] = useState(false);
-  const closeTimerRef = useRef<number | null>(null);
+  const { renderState, isClosing } = useDelayedUnmount(state);
 
   useEffect(() => {
     setAppliedSelectionType(null);
     setAppliedAnnotationIds([]);
   }, [state?.annotation?.id, state?.bottom, state?.left, state?.mode, state?.placement, state?.text, state?.top]);
-
-  useEffect(() => {
-    if (closeTimerRef.current !== null) {
-      window.clearTimeout(closeTimerRef.current);
-      closeTimerRef.current = null;
-    }
-    if (state) {
-      setRenderState(state);
-      setIsClosing(false);
-      return;
-    }
-    if (!renderState) return;
-    setIsClosing(true);
-    closeTimerRef.current = window.setTimeout(() => {
-      setRenderState(null);
-      setIsClosing(false);
-      closeTimerRef.current = null;
-    }, 140);
-  }, [renderState, state]);
-
-  useEffect(() => {
-    return () => {
-      if (closeTimerRef.current !== null) {
-        window.clearTimeout(closeTimerRef.current);
-      }
-    };
-  }, []);
 
   const currentState = state || renderState;
   if (!currentState) return null;
@@ -1293,40 +1336,11 @@ const ReaderCopyToast = ({
 
 const ReaderNoteModal = ({ state, onCancel, onSave }: ReaderNoteModalProps): React.JSX.Element | null => {
   const [value, setValue] = useState('');
-  const [renderState, setRenderState] = useState<ReaderNoteEditorState | null>(state);
-  const [isClosing, setIsClosing] = useState(false);
-  const closeTimerRef = useRef<number | null>(null);
+  const { renderState, isClosing } = useDelayedUnmount(state);
 
   useEffect(() => {
     if (state) setValue(state.noteText || '');
   }, [state]);
-
-  useEffect(() => {
-    if (closeTimerRef.current !== null) {
-      window.clearTimeout(closeTimerRef.current);
-      closeTimerRef.current = null;
-    }
-    if (state) {
-      setRenderState(state);
-      setIsClosing(false);
-      return;
-    }
-    if (!renderState) return;
-    setIsClosing(true);
-    closeTimerRef.current = window.setTimeout(() => {
-      setRenderState(null);
-      setIsClosing(false);
-      closeTimerRef.current = null;
-    }, 140);
-  }, [renderState, state]);
-
-  useEffect(() => {
-    return () => {
-      if (closeTimerRef.current !== null) {
-        window.clearTimeout(closeTimerRef.current);
-      }
-    };
-  }, []);
 
   const currentState = state || renderState;
   if (!currentState) return null;
@@ -1777,15 +1791,17 @@ const buildPageTitleId = (pageCount: number, titleIdPage: Record<string, number>
     .filter((item) => Number.isFinite(item.titleId))
     .sort((a, b) => a.page - b.page || a.titleId - b.titleId);
 
-  return Array.from({ length: pageCount }, (_, page) => {
-    let currentTitleId = orderedTitles[0]?.titleId ?? firstTitleId;
-    orderedTitles.forEach((item) => {
-      if (item.page <= page) {
-        currentTitleId = item.titleId;
-      }
-    });
-    return currentTitleId;
-  });
+  const result = new Array<number>(pageCount);
+  let titleIndex = 0;
+  let currentTitleId = orderedTitles[0]?.titleId ?? firstTitleId;
+  for (let page = 0; page < pageCount; page++) {
+    while (titleIndex < orderedTitles.length && orderedTitles[titleIndex].page <= page) {
+      currentTitleId = orderedTitles[titleIndex].titleId;
+      titleIndex++;
+    }
+    result[page] = currentTitleId;
+  }
+  return result;
 };
 
 const getPagedSpreadStartPage = (page: number, visiblePages: number): number => {
@@ -1809,8 +1825,23 @@ const areChapterImagesReadyForPagination = (flow: HTMLElement, expectedImageCoun
   );
 };
 
+// Bounded per-keyword cache: when search keyword changes the entire cache is
+// dropped, so we never hold stale highlight nodes for an old query. The cap is
+// per active keyword and bounds memory in long reading sessions.
+const READER_HIGHLIGHT_CACHE_LIMIT = 512;
+let highlightCacheKeyword = '';
+let highlightCache = new Map<string, React.ReactNode>();
+
 const renderHighlightedText = (text: string, keyword: string): React.ReactNode => {
   if (!keyword) return text;
+
+  if (highlightCacheKeyword !== keyword) {
+    highlightCacheKeyword = keyword;
+    highlightCache = new Map();
+  } else {
+    const cached = highlightCache.get(text);
+    if (cached !== undefined) return cached;
+  }
 
   const nodes: React.ReactNode[] = [];
   let fromIndex = 0;
@@ -1853,6 +1884,11 @@ const renderHighlightedText = (text: string, keyword: string): React.ReactNode =
     nodes.push(text.slice(fromIndex));
   }
 
+  if (highlightCache.size >= READER_HIGHLIGHT_CACHE_LIMIT) {
+    const oldestKey = highlightCache.keys().next();
+    if (!oldestKey.done) highlightCache.delete(oldestKey.value);
+  }
+  highlightCache.set(text, nodes);
   return nodes;
 };
 
@@ -2395,7 +2431,7 @@ const ReaderScrollContent = ({
   targetBlockRatio,
 }: ReaderScrollContentProps): React.JSX.Element => {
   const contentRef = useRef<HTMLElement>(null);
-  const [annotations, setAnnotations] = useState<ReaderAnnotation[]>(() => getReaderAnnotations(bookId));
+  const annotations = useReaderAnnotationsForBook(bookId);
   const {
     clearSelection,
     copySelection,
@@ -2441,17 +2477,6 @@ const ReaderScrollContent = ({
     });
     return map;
   }, [annotations]);
-
-  useEffect(() => {
-    const updateAnnotations = () => {
-      setAnnotations(getReaderAnnotations(bookId));
-    };
-    updateAnnotations();
-    syncHook.tap(EVENT_NAME.SET_READER_ANNOTATIONS, updateAnnotations);
-    return () => {
-      syncHook.off(EVENT_NAME.SET_READER_ANNOTATIONS, updateAnnotations);
-    };
-  }, [bookId]);
 
   const showCopyToast = useCallback(() => {
     if (copyToastTimerRef.current) {
@@ -2719,7 +2744,7 @@ const ReaderPagedContent = ({
 }: ReaderPagedContentProps): React.JSX.Element => {
   const viewportRef = useRef<HTMLDivElement>(null);
   const flowRef = useRef<HTMLElement>(null);
-  const [annotations, setAnnotations] = useState<ReaderAnnotation[]>(() => getReaderAnnotations(bookId));
+  const annotations = useReaderAnnotationsForBook(bookId);
   const {
     clearSelection,
     copySelection,
@@ -2777,17 +2802,6 @@ const ReaderPagedContent = ({
     }
     return undefined;
   }, [annotations, bookId, pageNum, visiblePages]);
-
-  useEffect(() => {
-    const updateAnnotations = () => {
-      setAnnotations(getReaderAnnotations(bookId));
-    };
-    updateAnnotations();
-    syncHook.tap(EVENT_NAME.SET_READER_ANNOTATIONS, updateAnnotations);
-    return () => {
-      syncHook.off(EVENT_NAME.SET_READER_ANNOTATIONS, updateAnnotations);
-    };
-  }, [bookId]);
 
   useLayoutEffect(() => {
     const nextElement = viewportRef.current?.closest<HTMLElement>('.book-info-container') ?? viewportRef.current;

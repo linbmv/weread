@@ -8,9 +8,20 @@ export interface ReaderSettingRecord {
   value: string;
 }
 
-export const readCachedReaderSetting = (key: string): string | null => safeReadStorage(key);
+// In-memory overlay over localStorage so high-frequency reads on the render
+// path (font size, line gap, indent, scroll padding) skip the try/catch +
+// canUseStorage probe on every call. Cross-tab sync was not supported anyway.
+const settingMemoryCache = new Map<string, string | null>();
+
+export const readCachedReaderSetting = (key: string): string | null => {
+  if (settingMemoryCache.has(key)) return settingMemoryCache.get(key) ?? null;
+  const value = safeReadStorage(key);
+  settingMemoryCache.set(key, value);
+  return value;
+};
 
 export const writeCachedReaderSetting = (key: string, value: string): void => {
+  settingMemoryCache.set(key, value);
   safeWriteStorage(key, value);
 };
 

@@ -1,0 +1,121 @@
+● 小说阅读器项目代码质量分析报告
+
+  仅做静态分析，未修改任何代码。报告分为六块：冗余、复杂机制、非必要兜底、性能瓶颈、可疑实现、亮点与总评。
+
+  ---
+  一、冗余逻辑
+
+  1. 同名工具多处实现
+    - clampRatio 在 lib/utils.ts:6 和 lib/readerProgress.ts:33 各定义一份。
+    - successResult/errorResult 在 lib/indexedDB.ts:56-69 与 store/books.ts:54-72 重复定义且字段一致。
+    - safeReadStorage 已封装 try/canUseStorage，readerSettings.ts:76 又自己写了一遍 canUseDOM。
+  2. 定位器构造重复
+    - createReaderLocator（readerProgress.ts:187）与 createScrollTargetLocator（book-detail/index.tsx:2171）做的事 90% 一致：blockPageOffset / blockScrollRatio / globalProgress /
+  textBefore/textAfter 计算完全复制。应合并为一个底层 builder。
+  3. 重复 React 模式
+    - ReaderSelectionMenu（book-detail:1062）与 ReaderNoteModal（:1294）的"延迟卸载 + closeTimer + isClosing + renderState"几乎逐行同构，可抽 useDelayedUnmount。
+    - ReaderScrollContent:2445 与 ReaderPagedContent:2781 注册 SET_READER_ANNOTATIONS 的 effect 完全相同，可抽 useReaderAnnotationsForBook(bookId)。
+  4. 模块级缓存的四份拷贝
+    - progressMapCache（readerProgress.ts:53）
+    - annotationMapCache（readerAnnotations.ts:74）
+    - dailyAggregateCache（readerReadingTime.ts:40）
+    - blobUrlCache + cache（bookResources.ts:26、chapterPagination.ts:23）
+  四套结构一致的"模块单例 Map + writer 同名函数"，未抽象。
+  5. 死/孤立代码
+    - pages/book-detail/index.tsx.backup 仍在仓库；
+    - lib/backup/ 在 home 中被 import 但 git status 显示 untracked（构建可疑）；
+    - assets/逍遥小散仙.epub 是测试样本不应进库；
+    - store/books.ts:36 createBookStore 在 db 未打开时永远是空操作（db.createObjectStore 自己又检查 database? 链可选），实际从未生效，但仍被 store/index.ts 两处调用。
+
+  ---
+  二、复杂机制 / 过度设计
+
+  1. pages/book-detail/index.tsx 4080 行：单文件耦合"选区/标注/书签/分页/搜索/朗读时长/手势/导航/状态恢复"。维护成本极高。建议拆 useReaderSelectionOverlay / useChapterPagination /
+   useReaderNavigationDispatcher 等子文件。
+  2. 三套"待跳转"机制并存
+    - pendingLocatorRef（progress 初始化）
+    - navigationTarget（搜索/目录跳转）
+    - pinnedScrollTargetLocatorRef（滚动模式锚定）
+  三者互相 invalidate，注释中已自承"时序竞争"。可统一为单一 navigationIntent 队列。
+  3. 分页缓存链路过深
+  estimateChapterPageCount → chapterPagination cache(LRU 256) → measureChapterPagination → setChapterPaginations → setTextSyntaxTree。三处异步 effect 互相驱动（book-detail:2858 /
+  3063 / 3149），注释中明确说明竞争问题。可由一个 useLayoutEffect 串行执行。
+  4. Worker 端 Strategy 模式：workers/dbWorker.ts 为 6 个 op 构建 6 个 class + factory，是教科书级过度设计。改用 switch 函数表即可。
+  5. Worker 通信 O(N²) 监听器：store/books.ts:performWorkerOperation 每个操作 add/remove message 监听器，且每个监听器都需扫所有响应并比对
+  operationId。高频写（书签、进度）会显著退化。改为单一调度器 + Map<operationId, resolver> 是常规做法。
+  6. subscribers 全局事件总线：subscribe.ts 转发 ranuts 的 subscribers，11 个事件名混杂"业务状态"与"UI 命令"。Catalogue 一处订阅 6
+  个事件，任何一个触发都全量重算（Catalogue/index.tsx:110-126）。
+
+  ---
+  三、非必要兜底
+
+  1. 冗余的 NaN/Finite 守卫
+    - readerProgress.ts:314,321,368 对自己控制的 endedAt、startedAt、progress.updatedAt 都 Number.isFinite 检查，这些值不可能是 NaN。
+    - readerSettings.ts 大量 if (!Number.isFinite(value)) return DEFAULT_* 后再 clamp — 已经 clamp 就不需要先判 finite。
+  2. 不可能发生的 race 兜底
+    - store/books.ts:236-264：同一个 Worker 实例的消息天然串行，注释里假想的"另一次导入抢插入"在当前架构里不可能发生，整段 fallback 是死代码。
+  3. canUseDOM / canUseStorage 双重包裹
+    - 项目是纯客户端 SPA（虽然有 views/server.tsx，但 lib 文件不会跑在 SSR），safeReadStorage 又 try-catch 又判环境，调用栈一层一层防。
+  4. extractVersion 用正则解析浏览器错误信息（indexedDB.ts:71）：脆弱且与浏览器实现绑定。VersionError 时直接重新 indexedDB.open(name)（不带 version）即可拿到当前版本。
+  5. app.tsx 的 visibilitychange + closeDB / resumeDB：DOM 隐藏不需要 close IDB，重打开有时延还会触发 hydrate；onVisibilityChange 实际只在 visible 走 resume，但 unmount 时无条件
+  closeDB，与隐藏-显示循环矛盾。
+  6. bootstrapReaderSettings 被多次调用：index.tsx:8 一次，hydrateReaderSettings 内 readerSettings.ts:268 又一次，再 emit 一次。冷启动期间渲染抖动。
+  7. localStorage + IndexedDB 双写（readerSettingStore.ts:17）：每次 setting 改变同时写两边，没有意义；DB 已经有完整记录，localStorage 只是给同步 getter 用的缓存——更新时只需写
+  DB，缓存只在 hydrate 时填一次。
+
+  ---
+  四、性能瓶颈
+
+  1. buildPageTitleId（book-detail:1774）
+  每页 forEach 全部 title 累计，复杂度 O(pages × titles)。长篇 5000 页 × 500 章会执行 250 万次比较，且 deps 一变就重跑。应改用线性扫描 + 单次累积。
+  2. useReaderReadingTimeTracker（:130）
+  在 window 上注册 click/keydown/pointerdown/scroll/touchstart/wheel 6 个 capture 监听，且 markActivity 每次同步执行 querySelectorAll('.reader-popover-panel') +
+  closest('.reader-control-panel') + getReaderControlPanelActive()。在阅读手势密集时持续打 DOM。结合既有 IntersectionObserver，contentVisibleRef 的手动检查实际多余。
+  3. createReaderScrollLocator 滚动保存
+  scheduleSave(180ms debounce) → findScrollAnchorElement 遍历整章全部 [data-reader-block-id]，每个 getBoundingClientRect 都强制 layout（readerProgress.ts:142）。长章 1000+
+  块时滚动手感会被破坏。应只看视口附近 ±N 个块或用 IntersectionObserver 维护当前锚点。
+  4. Worker 消息分发 O(N²)：见上文第二节第 5 点。
+  5. projectBookForList 与 store.getAll()：先把全量 book 序列化跨 worker，再丢字段。可在 worker 端用游标只读必要字段，避免 IDB 在 worker 内完整克隆 document。
+  6. textSyntaxTreeCache 仅 2 条（book-detail:1445）。多书切换会反复重建 syntax tree（其中包含全文 rawText、blocks、index map）。对大书是百 ms 级开销。
+  7. 频繁广播导致全树重渲染
+    - 每 30s 一次 addReaderReadingTime → SET_READER_PROGRESS → Catalogue 整目录重算（Catalogue/index.tsx:114）。
+    - emitAnnotationChange 触发 ReaderScrollContent/ReaderPagedContent 整章重渲染（annotationsByBlockId deps 链）。
+  缺少细粒度订阅（按 bookId / titleId 切片）。
+  8. chapterSplitter.ts 938 行的多正则全文扫描：导入时分别匹配 CJK/EN/罗马/数字等族系，没有 short-circuit；大文件（几十 MB TXT）会卡主线程。建议先放到 worker（目前导入是否在
+  worker？看 epubWorker.ts 只处理 EPUB）。
+
+  ---
+  五、可疑实现
+
+  1. document: { version: 1 } as ReaderBookDocument stub（store/books.ts:198,258）：返回结构假装完整。调用方若把它当真实 document 用会 NPE。
+  2. pages/book-detail/index.tsx.backup 仍在主目录。
+  3. 双指纹机制并存（plan.md:170 自承），用户数据匹配时双轨判断，未做迁移收敛。
+  4. onPaginationMeasure 在 requestAnimationFrame 内再次取消上一个 rAF（:3122-3137），重复保护，可读性差。
+  5. renderHighlightedText 中 findKeywordSentenceMatches 在每个 block 渲染时执行（:1818, :1949），未 memoize，且和段级 block.text.includes(searchKeyword) 重复扫一遍。
+  6. router/index.tsx:22 lazy(() => import(\../pages/${component}/index.tsx`))` 的 Page 组件并未实际使用（Home、BookDetail 是 static import），动态 import 路径还是字符串模板，Vite
+   会按 glob 全量打包所有 pages/*/index.tsx。
+
+  ---
+  六、亮点（值得保留）
+
+  - IndexedDB + Worker 隔离，主线程不被搜索/写入拖慢。
+  - 资源（封面/插图）独立 DB + LRU Blob URL，长会话内存可控。
+  - 分页 measure + estimate 双轨策略，首屏快、稳态精确。
+  - chapterSplitter 中文章节识别覆盖面广，是真正的难点工程。
+  - TS strict + eslint flat config + 注释解释竞争与设计取舍（注释质量高于平均水平）。
+
+  ---
+  总评
+
+  工程水平：高于一般 demo 项目，已经在认真处理 IndexedDB 一致性、Worker 隔离、文本指纹、章节排版等真问题；但典型"单人长期迭代型"代码库的弊病也很明显——核心阅读器文件膨胀到 4000+
+  行、相同模式重复 N 份、防御代码堆叠、订阅广播过粗导致连锁重渲染。
+
+  最严重的 3-5 个问题：
+
+  1. pages/book-detail/index.tsx 单文件 4080 行 + 三套跳转机制 + 三层分页 effect 互相 invalidate（最高优先级，影响可维护性与正确性）。
+  2. buildPageTitleId 的 O(pages × titles) 与滚动保存的全块 getBoundingClientRect（长书性能瓶颈）。
+  3. 全局 subscribers 总线 + 模块级 Map 缓存导致细粒度订阅缺失，进度/标注更新触发全树重渲染。
+  4. Worker 消息分发未做单一调度器，高频写场景 O(N²) 监听器开销。
+  5. 防御性代码与冗余兜底（不可能的 race、双写 storage、重复 Finite 检查），既增加阅读成本又掩盖真正异常路径。
+
+  改进方向（不实施）：拆分 reader 组件 → 抽 hooks/工具；统一 locator 构造；引入 per-bookId 订阅切片；Worker 调度器统一化；删除不可能分支与备份文件；将 localStorage 改为只读缓存。
