@@ -6,6 +6,7 @@ import { SORT_DIRECTION } from '@/lib/enums';
 import { getReaderProgress } from '@/lib/readerProgress';
 import { getStoredReaderReadingMode } from '@/lib/readerSettings';
 import { useResolvedBookImage } from '@/lib/useResolvedBookImage';
+import { useSyncHookEvents } from '@/lib/useSyncHookEvents';
 import { OcticonClock, OcticonSortAsc } from '@/components/Octicon';
 import { BookDataPanel } from '@/components/Catalogue/BookDataPanel';
 import { BookSummaryButton } from '@/components/Catalogue/BookSummaryButton';
@@ -18,6 +19,15 @@ import {
   turnToCatalogueTitle,
 } from '@/components/Catalogue/catalogueUtils';
 import './index.scss';
+
+const CATALOGUE_META_EVENTS = [
+  EVENT_NAME.SET_CURRENT_BOOK_PAGE,
+  EVENT_NAME.SET_CURRENT_BOOK_DETAIL,
+  EVENT_NAME.SET_READER_ANNOTATIONS,
+  EVENT_NAME.SET_READER_NAVIGATION_TARGET,
+  EVENT_NAME.SET_READER_PROGRESS,
+  EVENT_NAME.SET_TEXT_SYNTAX_TREE,
+] as const;
 
 export const Catalogue = (): React.JSX.Element => {
   const sortRef = useRef<HTMLDivElement>(null);
@@ -109,21 +119,9 @@ export const Catalogue = (): React.JSX.Element => {
 
   useEffect(() => {
     updateCatalogueMeta();
-    syncHook.tap(EVENT_NAME.SET_CURRENT_BOOK_PAGE, updateCatalogueMeta);
-    syncHook.tap(EVENT_NAME.SET_CURRENT_BOOK_DETAIL, updateCatalogueMeta);
-    syncHook.tap(EVENT_NAME.SET_READER_ANNOTATIONS, updateCatalogueMeta);
-    syncHook.tap(EVENT_NAME.SET_READER_NAVIGATION_TARGET, updateCatalogueMeta);
-    syncHook.tap(EVENT_NAME.SET_READER_PROGRESS, updateCatalogueMeta);
-    syncHook.tap(EVENT_NAME.SET_TEXT_SYNTAX_TREE, updateCatalogueMeta);
-    return () => {
-      syncHook.off(EVENT_NAME.SET_CURRENT_BOOK_PAGE, updateCatalogueMeta);
-      syncHook.off(EVENT_NAME.SET_CURRENT_BOOK_DETAIL, updateCatalogueMeta);
-      syncHook.off(EVENT_NAME.SET_READER_ANNOTATIONS, updateCatalogueMeta);
-      syncHook.off(EVENT_NAME.SET_READER_NAVIGATION_TARGET, updateCatalogueMeta);
-      syncHook.off(EVENT_NAME.SET_READER_PROGRESS, updateCatalogueMeta);
-      syncHook.off(EVENT_NAME.SET_TEXT_SYNTAX_TREE, updateCatalogueMeta);
-    };
   }, [updateCatalogueMeta]);
+
+  useSyncHookEvents(CATALOGUE_META_EVENTS, updateCatalogueMeta);
 
   useLayoutEffect(() => {
     if (alignCurrentTitle()) return;

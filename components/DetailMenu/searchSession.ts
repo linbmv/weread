@@ -1,4 +1,3 @@
-import { getQuery } from 'ranuts/utils';
 import { EVENT_NAME, createEmptyReaderSearchHighlight, setReaderSearchHighlight, syncHook } from '@/lib/subscribe';
 import { trim } from '@/lib/transformText';
 import type { ReaderMenuSearchSessionState } from '@/components/DetailMenu/types';
@@ -15,8 +14,8 @@ export const createEmptyReaderMenuSearchState = (): ReaderMenuSearchSessionState
 });
 
 export const getReaderMenuSearchKey = (): string => {
-  const { id } = getQuery();
-  return typeof id === 'string' && id ? id : 'default';
+  const match = window.location.pathname.match(/\/reader\/([^/]+)/);
+  return match?.[1] ? decodeURIComponent(match[1]) : 'default';
 };
 
 export const getReaderMenuSearchState = (key: string): ReaderMenuSearchSessionState => {

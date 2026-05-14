@@ -227,18 +227,20 @@ export const restoreReaderReadingTimeForBook = async ({
   await Promise.all([...restoreDaily, ...restoreSegments]);
 };
 
-export const deleteReaderReadingTimeForBook = (bookId?: string | null): void => {
-  if (!bookId) return;
+export const deleteReaderReadingTimeForBook = async (bookId: string): Promise<void> => {
+  const pendingDeletes: Promise<unknown>[] = [];
   Array.from(dailyAggregateCache.values())
     .filter((record) => record.bookId === bookId)
     .forEach((record) => {
       dailyAggregateCache.delete(record.id);
-      void db.delete({ key: record.id, storeName: READER_READING_TIME_DAILY_STORE_NAME });
+      pendingDeletes.push(db.delete({ key: record.id, storeName: READER_READING_TIME_DAILY_STORE_NAME }));
     });
-
-  void db.deleteByCursor({
-    storeName: READER_READING_TIME_SEGMENTS_STORE_NAME,
-    indexName: 'bookId',
-    keyRange: IDBKeyRange.only(bookId),
-  });
+  pendingDeletes.push(
+    db.deleteByCursor({
+      storeName: READER_READING_TIME_SEGMENTS_STORE_NAME,
+      indexName: 'bookId',
+      keyRange: IDBKeyRange.only(bookId),
+    }),
+  );
+  await Promise.all(pendingDeletes);
 };

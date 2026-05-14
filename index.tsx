@@ -10,9 +10,10 @@ bootstrapReaderSettings();
 const container = document.getElementById('app')!;
 
 const root = createRoot(container);
+const routerBasename = import.meta.env.BASE_URL === '/' ? undefined : import.meta.env.BASE_URL.replace(/\/$/, '');
 
 root.render(
-  <BrowserRouter>
+  <BrowserRouter basename={routerBasename}>
     <App />
   </BrowserRouter>,
 );

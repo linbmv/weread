@@ -108,6 +108,18 @@ const getDBWorker = (): Worker => {
   return dbWorker;
 };
 
+export const terminateDBWorker = (): void => {
+  if (dbWorker) {
+    dbWorker.terminate();
+    dbWorker = null;
+  }
+  for (const [, pending] of pendingWorkerOperations) {
+    clearTimeout(pending.timer);
+    pending.resolve(errorResult('Worker terminated'));
+  }
+  pendingWorkerOperations.clear();
+};
+
 const performWorkerOperation = <T = unknown>(
   type: string,
   data: Record<string, unknown> = {},

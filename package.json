@@ -7,15 +7,13 @@
   "scripts": {
     "pre": "sh ./bin/preinstall.sh",
     "dev": "vite --host --force --mode dev",
-    "build:client": "vite build --outDir dist/client",
-    "build:server": "vite build --outDir dist/server --ssr ./views/server.tsx",
-    "build": "sh ./bin/build.sh",
+    "build": "vite build",
     "tsc": "tsc --noEmit",
     "format": "prettier --write .",
     "lint": "eslint --cache ."
   },
   "engines": {
-    "node": ">=23.10.0"
+    "node": ">=22.12.0"
   },
   "keywords": [],
   "author": "",

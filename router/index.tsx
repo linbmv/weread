@@ -1,37 +1,25 @@
-import { Suspense, lazy, useEffect } from 'react';
+import { useEffect } from 'react';
 import { useNavigate, useRoutes } from 'react-router-dom';
 import type { ReactElement } from 'react';
 import { Loading } from '@/components/Loading/index';
 import { Home } from '@/pages/home/index';
 import { BookDetail } from '@/pages/book-detail/index';
-
-export const base = '/weread';
-// export const base = '/packages/read/dist/client'
+import { Shelf } from '@/pages/shelf/index';
 
 export enum ROUTE_PATH {
-  HOME = `${base}/`,
-  BOOK_DETAIL = `${base}/book-detail`,
-  LOADING = `${base}/loading`,
+  HOME = '/',
+  READER = '/reader',
+  SHELF = '/shelf',
+  LOADING = '/loading',
 }
 
-export interface Redirect {
-  (param: { to: string; replace?: boolean; state?: object }): ReactElement;
-}
+export const createReaderPath = (bookId: string | number): string => `${ROUTE_PATH.READER}/${encodeURIComponent(bookId)}`;
 
-export const Page = ({ component }: { component: string }): ReactElement => {
-  const Element = lazy(() => import(`../pages/${component}/index.tsx`));
-  return (
-    <Suspense fallback={<Loading />}>
-      <Element />
-    </Suspense>
-  );
-};
-
-const Redirect: Redirect = ({ to, replace, state }) => {
+const Redirect = ({ to, replace, state }: { replace?: boolean; state?: object; to: string }): ReactElement => {
   const navigate = useNavigate();
   useEffect(() => {
     navigate(to, { replace, state });
-  });
+  }, [navigate, to, replace, state]);
 
   return <Loading />;
 };
@@ -43,8 +31,12 @@ export const Routes = (): ReactElement | null => {
       element: <Home />,
     },
     {
-      path: ROUTE_PATH.BOOK_DETAIL,
+      path: `${ROUTE_PATH.READER}/:bookId`,
       element: <BookDetail />,
+    },
+    {
+      path: ROUTE_PATH.SHELF,
+      element: <Shelf />,
     },
     {
       path: ROUTE_PATH.LOADING,

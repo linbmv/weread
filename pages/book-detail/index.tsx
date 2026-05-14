@@ -1,7 +1,7 @@
 import { type CSSProperties, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { type NavigateFunction, useNavigate } from 'react-router-dom';
-import { debounce, getQuery } from 'ranuts/utils';
+import { type NavigateFunction, useNavigate, useParams } from 'react-router-dom';
+import { debounce } from 'ranuts/utils';
 import { getBookById } from '@/store/books';
 import type { BookInfo } from '@/store/books';
 import type { ReaderBlock, TextSyntaxTree } from '@/lib/transformText';
@@ -25,6 +25,7 @@ import {
 import type { ReaderNavigationTarget } from '@/lib/subscribe';
 import { resumeDB } from '@/store';
 import { DEVICE_ENUM, useCheckDevice } from '@/lib/hooks';
+import { useSyncHookEvents } from '@/lib/useSyncHookEvents';
 import { Loading } from '@/components/Loading';
 import { OcticonChevronLeft, OcticonChevronRight } from '@/components/Octicon';
 import { t } from '@/locales';
@@ -99,9 +100,29 @@ import 'ranui/icon';
 import 'ranui/input';
 import './index.scss';
 
+const BOOK_DETAIL_UI_EVENTS = [
+  EVENT_NAME.SET_CURRENT_BOOK_DETAIL,
+  EVENT_NAME.SET_READER_NAVIGATION_TARGET,
+  EVENT_NAME.SET_READER_SEARCH_HIGHLIGHT,
+  EVENT_NAME.SET_TEXT_SYNTAX_TREE,
+] as const;
+
+const MOBILE_BOOK_DETAIL_UI_EVENTS = [
+  EVENT_NAME.SET_CURRENT_BOOK_DETAIL,
+  EVENT_NAME.SET_READER_SEARCH_HIGHLIGHT,
+  EVENT_NAME.SET_TEXT_SYNTAX_TREE,
+] as const;
+
+const BOOK_DETAIL_PAGE_EVENTS = [EVENT_NAME.SET_CURRENT_BOOK_PAGE] as const;
+
 const MOBILE_ICON_STYLE = {
   '--ran-icon-font-size': '36px',
   '--ran-icon-color': 'var(--icon-color-1)',
+};
+
+const useReaderBookId = (): string | undefined => {
+  const { bookId } = useParams<{ bookId: string }>();
+  return bookId;
 };
 
 const ReaderPagePreviousIcon = (): React.JSX.Element => <OcticonChevronLeft className="reader-page-nav-icon" />;
@@ -1019,8 +1040,7 @@ const loadBookDetailById = (id: string | undefined, navigate: NavigateFunction):
 
 export const BookDetail = (): React.JSX.Element => {
   const [currentDevice] = useCheckDevice();
-  const { id } = getQuery();
-  const bookId = typeof id === 'string' ? id : undefined;
+  const bookId = useReaderBookId();
 
   useEffect(() => {
     return () => {
@@ -1038,7 +1058,7 @@ export const BookDetail = (): React.JSX.Element => {
 };
 
 export const DesktopBookDetail = (): React.JSX.Element => {
-  const { id } = getQuery();
+  const id = useReaderBookId();
   const navigate = useNavigate();
   const ref = useRef<HTMLDivElement>(null);
   const [_, update] = useState(0);
@@ -1074,6 +1094,11 @@ export const DesktopBookDetail = (): React.JSX.Element => {
     navigate(ROUTE_PATH.HOME);
   };
 
+  const toShelf = () => {
+    if (!id) return;
+    navigate(ROUTE_PATH.SHELF);
+  };
+
   const toBookHome = () => {
     const tree = getTextSyntaxTree();
     if (!tree.rawText || tree.blocks.length === 0) return;
@@ -1085,26 +1110,13 @@ export const DesktopBookDetail = (): React.JSX.Element => {
   };
 
   useEffect(() => {
-    const { id } = getQuery();
     if (id) {
       loadBookDetailById(id, navigate);
     }
-  }, [navigate]);
+  }, [id, navigate]);
 
-  useEffect(() => {
-    syncHook.tap(EVENT_NAME.SET_CURRENT_BOOK_DETAIL, updateUI);
-    syncHook.tap(EVENT_NAME.SET_CURRENT_BOOK_PAGE, updatePageUI);
-    syncHook.tap(EVENT_NAME.SET_READER_NAVIGATION_TARGET, updateUI);
-    syncHook.tap(EVENT_NAME.SET_READER_SEARCH_HIGHLIGHT, updateUI);
-    syncHook.tap(EVENT_NAME.SET_TEXT_SYNTAX_TREE, updateUI);
-    return () => {
-      syncHook.off(EVENT_NAME.SET_CURRENT_BOOK_DETAIL, updateUI);
-      syncHook.off(EVENT_NAME.SET_CURRENT_BOOK_PAGE, updatePageUI);
-      syncHook.off(EVENT_NAME.SET_READER_NAVIGATION_TARGET, updateUI);
-      syncHook.off(EVENT_NAME.SET_READER_SEARCH_HIGHLIGHT, updateUI);
-      syncHook.off(EVENT_NAME.SET_TEXT_SYNTAX_TREE, updateUI);
-    };
-  }, [updatePageUI, updateUI]);
+  useSyncHookEvents(BOOK_DETAIL_UI_EVENTS, updateUI);
+  useSyncHookEvents(BOOK_DETAIL_PAGE_EVENTS, updatePageUI);
 
   useEffect(() => {
     const updateReaderSettings = () => {
@@ -1250,9 +1262,13 @@ export const DesktopBookDetail = (): React.JSX.Element => {
                 {bookDetail?.title}
               </a>
             </div>
-            <div>
+            <div className="flex items-center gap-5">
               <a className="text-text-color-2 font-normal cursor-pointer hover:text-text-color-1" onClick={toHome}>
                 {t('home')}
+              </a>
+              <span className="readerTopBar_link_sep"></span>
+              <a className="text-text-color-2 font-normal cursor-pointer hover:text-text-color-1" onClick={toShelf}>
+                我的书架
               </a>
             </div>
           </div>
@@ -1297,9 +1313,13 @@ export const DesktopBookDetail = (): React.JSX.Element => {
               {bookDetail?.title}
             </a>
           </div>
-          <div>
+          <div className="flex items-center gap-5">
             <a className="text-text-color-2 font-normal cursor-pointer hover:text-text-color-1" onClick={toHome}>
               {t('home')}
+            </a>
+            <span className="readerTopBar_link_sep"></span>
+            <a className="text-text-color-2 font-normal cursor-pointer hover:text-text-color-1" onClick={toShelf}>
+              我的书架
             </a>
           </div>
         </div>
@@ -1367,7 +1387,7 @@ export const MobileBookDetail = (): React.JSX.Element => {
   const totalPage: number = textSyntaxTree.totalPage;
   const pageNum: number = getPageNum();
   const readerNavigationTarget = getReaderNavigationTarget();
-  const { id } = getQuery();
+  const id = useReaderBookId();
   const [pageTurnEffect, setPageTurnEffect] = useState<ReaderPageTurnEffect>(getStoredReaderPageTurnEffect);
 
   const updateUI = useMemo(
@@ -1425,24 +1445,13 @@ export const MobileBookDetail = (): React.JSX.Element => {
   };
 
   useEffect(() => {
-    const { id } = getQuery();
     if (id) {
       loadBookDetailById(id, navigate);
     }
-  }, [navigate]);
+  }, [id, navigate]);
 
-  useEffect(() => {
-    syncHook.tap(EVENT_NAME.SET_CURRENT_BOOK_DETAIL, updateUI);
-    syncHook.tap(EVENT_NAME.SET_CURRENT_BOOK_PAGE, updatePageUI);
-    syncHook.tap(EVENT_NAME.SET_READER_SEARCH_HIGHLIGHT, updateUI);
-    syncHook.tap(EVENT_NAME.SET_TEXT_SYNTAX_TREE, updateUI);
-    return () => {
-      syncHook.off(EVENT_NAME.SET_CURRENT_BOOK_DETAIL, updateUI);
-      syncHook.off(EVENT_NAME.SET_CURRENT_BOOK_PAGE, updatePageUI);
-      syncHook.off(EVENT_NAME.SET_READER_SEARCH_HIGHLIGHT, updateUI);
-      syncHook.off(EVENT_NAME.SET_TEXT_SYNTAX_TREE, updateUI);
-    };
-  }, [updatePageUI, updateUI]);
+  useSyncHookEvents(MOBILE_BOOK_DETAIL_UI_EVENTS, updateUI);
+  useSyncHookEvents(BOOK_DETAIL_PAGE_EVENTS, updatePageUI);
 
   useEffect(() => {
     const updatePageTurnEffect = () => {
@@ -1455,7 +1464,7 @@ export const MobileBookDetail = (): React.JSX.Element => {
   }, []);
 
   const isReaderReady = textSyntaxTree.rawText.length > 0 && textSyntaxTree.blocks.length > 0;
-  useReaderReadingTimeTracker(typeof id === 'string' ? id : undefined, isReaderReady, 'paged');
+  useReaderReadingTimeTracker(id, isReaderReady, 'paged');
 
   if (!isReaderReady) {
     return (

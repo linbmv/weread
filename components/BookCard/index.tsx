@@ -1,4 +1,4 @@
-import { useNavigate } from 'react-router-dom';
+import { useHref, useNavigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import type { BookInfo } from '@/store/books';
 import {
@@ -11,7 +11,7 @@ import {
 } from '@/lib/subscribe';
 import { createEmptyTextSyntaxTree } from '@/lib/transformText';
 import { startSpaViewTransition } from '@/lib/navigation';
-import { ROUTE_PATH } from '@/router';
+import { createReaderPath } from '@/router';
 import { useIsMobile } from '@/lib/hooks';
 import { useResolvedBookImage } from '@/lib/useResolvedBookImage';
 import './index.scss';
@@ -33,7 +33,7 @@ const useBookCardNavigate = (id: string | number | undefined) => {
   return (e: React.MouseEvent<HTMLAnchorElement>): void => {
     e.preventDefault();
     if (id === undefined) return;
-    const target = `${ROUTE_PATH.BOOK_DETAIL}?id=${id}`;
+    const target = createReaderPath(id);
     startSpaViewTransition(() => {
       clearReaderSignals();
       navigate(target);
@@ -57,7 +57,7 @@ export const BookCoverFallback = ({
   title?: string;
 }): React.JSX.Element => {
   return (
-    <div className={`book-cover-fallback ${className}`} aria-hidden="true" item-id={itemId}>
+    <div className={`book-cover-fallback ${className}`} aria-hidden="true" item-id={itemId} title={title}>
       <svg xmlns="http://www.w3.org/2000/svg" width="50%" height="50%" fill-opacity="0.3" viewBox="0 0 7 8"><path fill="currentColor" d="M1 0C.93 0 .87.01.81.03C.42.11.11.42.03.81C0 .87 0 .93 0 1v5.5C0 7.33.67 8 1.5 8H7V7H1.5c-.28 0-.5-.22-.5-.5s.22-.5.5-.5H7V.5c0-.28-.22-.5-.5-.5H6v3L5 2L4 3V0z"></path></svg>
     </div>
   );
@@ -67,6 +67,7 @@ export const BookCard = ({ book }: BookCardProps): React.JSX.Element => {
   const isMobile = useIsMobile();
   const { id, image, title = '', author = '' } = book || {};
   const onClick = useBookCardNavigate(id);
+  const href = useHref(createReaderPath(id ?? ''));
   const resolvedImage = useResolvedBookImage(id, image);
   const [imageFailed, setImageFailed] = useState(false);
   const shouldShowImage = Boolean(resolvedImage && !imageFailed);
@@ -77,7 +78,7 @@ export const BookCard = ({ book }: BookCardProps): React.JSX.Element => {
   return (
     <a
       onClick={onClick}
-      href={`/weread/book-detail?id=${id}`}
+      href={href}
       style={{ viewTransitionName: `book-info-${id}` }}
       className={isMobile ? MOBILE_CARD_CLASS : DESKTOP_CARD_CLASS}
     >

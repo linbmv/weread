@@ -4,6 +4,7 @@ import { hydrateReaderBookStatus } from '@/lib/readerBookStatus';
 import { hydrateReaderProgress } from '@/lib/readerProgress';
 import { hydrateReaderReadingTime } from '@/lib/readerReadingTime';
 import { hydrateReaderSettings } from '@/lib/readerSettings';
+import { terminateDBWorker } from '@/store/books';
 
 const DATABASE_VERSION = 3;
 
@@ -27,22 +28,17 @@ export const initDB = (): Promise<boolean> => {
   });
 };
 export const closeDB = (): void => {
+  terminateDBWorker();
   db.closeDataBase();
 };
 
 export const resumeDB = (): Promise<boolean> => {
-  return new Promise((resolve, reject) => {
-    db.refreshDatabase()
-      .then(async (result) => {
-        if (result.status !== 'success') {
-          resolve(false);
-          return;
-        }
-        await hydrateReaderData();
-        resolve(true);
-      })
-      .catch(() => {
-        reject(false);
-      });
-  });
+  return db
+    .refreshDatabase()
+    .then(async (result) => {
+      if (result.status !== 'success') return false;
+      await hydrateReaderData();
+      return true;
+    })
+    .catch(() => false);
 };

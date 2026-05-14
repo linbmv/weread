@@ -195,10 +195,12 @@ const runSearch = async (
       const ids = (await contentIndex.searchAsync(trimmedKeyword, { limit })) as Array<string | number>;
       const stringIds = ids.map((id) => String(id));
       const books = await fetchBooksByIds(database, stringIds);
-      const hits = books.map((book) => {
-        const hit = buildSearchHit(book, trimmedKeyword);
-        return { ...projectBookForList(hit), matchedText: hit.matchedText };
-      });
+      const hits = books
+        .map((book) => {
+          const hit = buildSearchHit(book, trimmedKeyword);
+          return { ...projectBookForList(hit), matchedText: hit.matchedText };
+        })
+        .filter((hit) => hit.matchedText.length > 0);
       postSuccess(operationId, hits);
     } catch (error) {
       postError(operationId, getErrorMessage(error, 'Search failed'), []);

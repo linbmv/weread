@@ -27,6 +27,26 @@ interface BookDataPanelProps {
 
 const PANEL_MOTION_DURATION = 180;
 
+const DurationValue = ({
+  duration,
+}: {
+  duration: {
+    hours: number;
+    minutes: number;
+  };
+}): React.JSX.Element => (
+  <div className="flex items-baseline gap-[2px]">
+    {duration.hours > 0 ? (
+      <>
+        <span className="reader-catalog-data-value text-[22px] font-bold">{duration.hours}</span>
+        <span className="reader-catalog-data-unit text-[12px] font-normal mr-0.5">小时</span>
+      </>
+    ) : null}
+    <span className="reader-catalog-data-value text-[22px] font-bold">{duration.minutes}</span>
+    <span className="reader-catalog-data-unit text-[12px] font-normal">分钟</span>
+  </div>
+);
+
 const READER_BOOK_STATUS_BUTTONS: Array<{
   Icon: ComponentType<SVGProps<SVGSVGElement>>;
   label: string;
@@ -213,29 +233,13 @@ export const BookDataPanel = ({
             <div className="flex justify-between mb-6 px-1">
               <div className="flex-1 min-w-0">
                 <div className="reader-catalog-data-label text-[13px] mb-1">累计时长</div>
-                <div className="flex items-baseline gap-[2px]">
-                  <span className="reader-catalog-data-value text-[22px] font-bold">{bookData.totalDuration.hours}</span>
-                  <span className="reader-catalog-data-unit text-[12px] font-normal mr-0.5">小时</span>
-                  <span className="reader-catalog-data-value text-[22px] font-bold">
-                    {bookData.totalDuration.minutes}
-                  </span>
-                  <span className="reader-catalog-data-unit text-[12px] font-normal">分钟</span>
-                </div>
+                <DurationValue duration={bookData.totalDuration} />
                 <div className="reader-catalog-data-subtle text-[11px] mt-1">{bookData.startLabel}</div>
               </div>
 
               <div className="flex-1 pl-6 min-w-0">
                 <div className="reader-catalog-data-label text-[13px] mb-1">单日阅读最久</div>
-                <div className="flex items-baseline gap-[2px]">
-                  <span className="reader-catalog-data-value text-[22px] font-bold">
-                    {bookData.maxDailyDuration.hours}
-                  </span>
-                  <span className="reader-catalog-data-unit text-[12px] font-normal mr-0.5">小时</span>
-                  <span className="reader-catalog-data-value text-[22px] font-bold">
-                    {bookData.maxDailyDuration.minutes}
-                  </span>
-                  <span className="reader-catalog-data-unit text-[12px] font-normal">分钟</span>
-                </div>
+                <DurationValue duration={bookData.maxDailyDuration} />
                 <div className="reader-catalog-data-subtle text-[11px] mt-1">{bookData.maxDailyDate}</div>
               </div>
             </div>

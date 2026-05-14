@@ -7,16 +7,18 @@ const __filename = fileURLToPath(import.meta.url);
 
 const __dirname = path.dirname(__filename);
 
+const normalizeBase = (value: string | undefined): string => {
+  if (!value || value === '/') return '/';
+  const normalized = value.trim();
+  if (!normalized || normalized === '/') return '/';
+  return `/${normalized.replace(/^\/+|\/+$/g, '')}/`;
+};
+
 export default defineConfig({
-  base: '/weread',
+  base: normalizeBase(process.env.VITE_BASE_PATH),
   plugins: [react()],
   build: {
     target: 'esnext',
-    manifest: true,
-    ssrManifest: true,
-    rollupOptions: {
-      input: 'views/index.html',
-    },
   },
   publicDir: 'public',
   resolve: {
@@ -41,8 +43,5 @@ export default defineConfig({
         additionalData: `@import "@/styles/base.css";`,
       },
     },
-  },
-  ssr: {
-    noExternal: ['react-router-dom'],
   },
 });

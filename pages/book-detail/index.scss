@@ -603,6 +603,14 @@
   animation-name: reader-copy-toast-center-fade;
 }
 
+.readerTopBar_link_sep {
+  width: 1px;
+  height: 14px;
+  background: var(--text-color-3);
+  opacity: 0.45;
+  display: inline-block;
+}
+
 @keyframes reader-copy-toast-fade {
   0% {
     opacity: 0;

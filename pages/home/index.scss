@@ -148,6 +148,30 @@
   }
 }
 
+.home-bookcase-section {
+  padding-bottom: 56px;
+}
+
+.home-shelf-link {
+  color: var(--text-color-2);
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 22px;
+  text-decoration: none;
+}
+
+.home-shelf-link:hover {
+  color: var(--text-color-1);
+}
+
+.home-shelf-link svg {
+  display: block;
+  flex: 0 0 auto;
+}
+
 .flyout-selector {
   color: var(--text-color-1);
 }

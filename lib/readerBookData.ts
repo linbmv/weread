@@ -4,11 +4,13 @@ import { deleteReaderBookStatus } from '@/lib/readerBookStatus';
 import { deleteReaderProgress } from '@/lib/readerProgress';
 import { deleteReaderReadingTimeForBook } from '@/lib/readerReadingTime';
 
-export const clearReaderBookData = (bookId?: string | null): void => {
+export const clearReaderBookData = async (bookId?: string | null): Promise<void> => {
   if (!bookId) return;
-  deleteReaderProgress(bookId);
-  deleteReaderAnnotationsForBook(bookId);
-  deleteReaderReadingTimeForBook(bookId);
-  deleteReaderBookStatus(bookId);
   clearChapterPaginationCache(bookId);
+  await Promise.all([
+    deleteReaderProgress(bookId),
+    deleteReaderAnnotationsForBook(bookId),
+    deleteReaderReadingTimeForBook(bookId),
+    deleteReaderBookStatus(bookId),
+  ]);
 };

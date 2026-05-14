@@ -72,9 +72,11 @@ export const isReaderStyleAnnotationType = (type: ReaderAnnotationType): type is
 };
 
 let annotationMapCache: Record<string, ReaderAnnotation[]> = {};
+let sortedAnnotationsCache: Record<string, ReaderAnnotation[]> = {};
 
 const writeAnnotationMap = (value: Record<string, ReaderAnnotation[]>): void => {
   annotationMapCache = value;
+  sortedAnnotationsCache = {};
 };
 
 const readAnnotationMap = (): Record<string, ReaderAnnotation[]> => annotationMapCache;
@@ -132,25 +134,31 @@ const compareBlockId = (a: string, b: string): number => {
 
 export const getReaderAnnotations = (bookId?: string | null): ReaderAnnotation[] => {
   if (!bookId) return [];
-  return [...(readAnnotationMap()[bookId] || [])].sort((a, b) => {
+  const cached = sortedAnnotationsCache[bookId];
+  if (cached) return cached;
+  const list = annotationMapCache[bookId];
+  if (!list || list.length === 0) return [];
+  const sorted = [...list].sort((a, b) => {
     if ((a.titleId ?? 0) !== (b.titleId ?? 0)) return (a.titleId ?? 0) - (b.titleId ?? 0);
     if (a.blockId !== b.blockId) return compareBlockId(a.blockId, b.blockId);
     return a.startOffset - b.startOffset || a.createdAt - b.createdAt;
   });
+  sortedAnnotationsCache[bookId] = sorted;
+  return sorted;
 };
 
 export const getReaderAnnotationsByBlock = (bookId: string | undefined, blockId: string): ReaderAnnotation[] => {
   return getReaderAnnotations(bookId).filter((annotation) => annotation.blockId === blockId);
 };
 
-export const deleteReaderAnnotationsForBook = (bookId?: string | null): void => {
-  if (!bookId) return;
+export const deleteReaderAnnotationsForBook = async (bookId: string): Promise<void> => {
   const map = readAnnotationMap();
-  if (!map[bookId]) return;
-  map[bookId].forEach((annotation) => deleteAnnotationRecord(annotation.id));
+  const list = map[bookId];
+  if (!list) return;
   delete map[bookId];
   writeAnnotationMap(map);
   emitAnnotationChange();
+  await Promise.all(list.map((annotation) => db.delete({ key: annotation.id, storeName: ANNOTATION_STORAGE_KEY })));
 };
 
 export const restoreReaderAnnotationsForBook = async ({

@@ -80,8 +80,7 @@ const getMinutesFromDuration = (durationMs: number): number => {
   return Math.floor(durationMs / 60_000);
 };
 
-const formatDurationText = (durationMs: number): string => {
-  const totalMinutes = getMinutesFromDuration(durationMs);
+const formatDurationMinutes = (totalMinutes: number): string => {
   const hours = Math.floor(totalMinutes / 60);
   const minutes = totalMinutes % 60;
   if (hours > 0 && minutes > 0) return `${hours}小时${minutes}分钟`;
@@ -89,12 +88,13 @@ const formatDurationText = (durationMs: number): string => {
   return `${minutes}分钟`;
 };
 
+const getDurationPartsFromMinutes = (totalMinutes: number): { hours: number; minutes: number } => ({
+  hours: Math.floor(totalMinutes / 60),
+  minutes: totalMinutes % 60,
+});
+
 const getDurationParts = (durationMs: number): { hours: number; minutes: number } => {
-  const totalMinutes = getMinutesFromDuration(durationMs);
-  return {
-    hours: Math.floor(totalMinutes / 60),
-    minutes: totalMinutes % 60,
-  };
+  return getDurationPartsFromMinutes(getMinutesFromDuration(durationMs));
 };
 
 const getLocalDateFromDayKey = (dayKey: string): Date => {
@@ -155,32 +155,33 @@ const buildMonthlyRecords = (bookId?: string): ReadingMonthRecord[] => {
   const monthMap = new Map<string, ReadingMonthRecord>();
 
   summary.daily
-    .filter((record) => record.durationMs > 0)
+    .filter((record) => record.durationMs >= MIN_READING_RECORD_DURATION_MS)
     .sort((a, b) => b.dayKey.localeCompare(a.dayKey))
     .forEach((record) => {
       const monthKey = record.dayKey.slice(0, 7);
       const previous = monthMap.get(monthKey);
+      const totalMinutes = getMinutesFromDuration(record.durationMs);
       const day: ReadingDayRecord = {
         date: formatDayKeyDay(record.dayKey),
         dayKey: record.dayKey,
-        durationMs: record.durationMs,
-        time: formatDurationText(record.durationMs),
-        totalMinutes: getMinutesFromDuration(record.durationMs),
+        durationMs: totalMinutes * 60_000,
+        time: formatDurationMinutes(totalMinutes),
+        totalMinutes,
       };
       if (previous) {
-        previous.durationMs += record.durationMs;
-        previous.totalMinutes = getMinutesFromDuration(previous.durationMs);
-        previous.time = formatDurationText(previous.durationMs);
+        previous.durationMs += day.durationMs;
+        previous.totalMinutes += day.totalMinutes;
+        previous.time = formatDurationMinutes(previous.totalMinutes);
         previous.days.push(day);
         return;
       }
       monthMap.set(monthKey, {
         days: [day],
-        durationMs: record.durationMs,
+        durationMs: day.durationMs,
         month: formatDayKeyMonth(record.dayKey),
         monthKey,
-        time: formatDurationText(record.durationMs),
-        totalMinutes: getMinutesFromDuration(record.durationMs),
+        time: formatDurationMinutes(day.totalMinutes),
+        totalMinutes: day.totalMinutes,
       });
     });
 
@@ -212,11 +213,14 @@ export const buildBookDataPanelData = (bookDetail: BookInfo, textSyntaxTree: Tex
   const progress = getReaderProgress(bookDetail.id);
   const summary = getReaderReadingTimeSummary(bookDetail.id);
   const monthlyRecords = buildMonthlyRecords(bookDetail.id);
+  const visibleDailyRecords = summary.daily.filter((record) => record.durationMs >= MIN_READING_RECORD_DURATION_MS);
   const sortedDaily = [...summary.daily]
-    .filter((record) => record.durationMs > 0)
+    .filter((record) => record.durationMs >= MIN_READING_RECORD_DURATION_MS)
     .sort((a, b) => a.dayKey.localeCompare(b.dayKey));
-  const maxDaily = [...summary.daily].sort((a, b) => b.durationMs - a.durationMs)[0];
+  const maxDaily = [...visibleDailyRecords].sort((a, b) => b.durationMs - a.durationMs)[0];
   const totalDurationMs = Math.max(summary.totalMs, progress?.totalReadingMs || 0);
+  const visibleTotalMinutes = monthlyRecords.reduce((sum, record) => sum + record.totalMinutes, 0);
+  const displayTotalMinutes = visibleTotalMinutes > 0 ? visibleTotalMinutes : getMinutesFromDuration(totalDurationMs);
   const earliestDay = sortedDaily[0]?.dayKey;
   const wordCount = formatWordCount(textSyntaxTree.rawText || bookDetail.document?.rawText || '');
 
@@ -226,13 +230,13 @@ export const buildBookDataPanelData = (bookDetail: BookInfo, textSyntaxTree: Tex
     maxDailyDuration: getDurationParts(maxDaily?.durationMs || 0),
     monthlyRecords: buildProcessedMonthlyRecords(monthlyRecords),
     readPercent: formatReadPercent(progress?.readPercent),
-    readingDays: summary.readingDays,
-    showReadingRecords: totalDurationMs >= MIN_READING_RECORD_DURATION_MS,
+    readingDays: new Set(visibleDailyRecords.map((record) => record.dayKey)).size,
+    showReadingRecords: visibleTotalMinutes > 0,
     startLabel: earliestDay
       ? `${formatMonthDay(getLocalDateFromDayKey(earliestDay).getTime())}开始阅读`
       : '尚未开始阅读',
     title: bookDetail.title || '未命名书籍',
-    totalDuration: getDurationParts(totalDurationMs),
+    totalDuration: getDurationPartsFromMinutes(displayTotalMinutes),
     totalWords: wordCount,
   };
 };

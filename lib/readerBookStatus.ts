@@ -76,11 +76,11 @@ export const setReaderBookStatus = (bookId: string | undefined | null, status?: 
   emitBookStatusChange();
 };
 
-export const deleteReaderBookStatus = (bookId?: string | null): void => {
-  if (!bookId || !(bookId in bookStatusMapCache)) return;
+export const deleteReaderBookStatus = async (bookId: string): Promise<void> => {
+  if (!(bookId in bookStatusMapCache)) return;
   delete bookStatusMapCache[bookId];
-  void db.delete({ key: bookId, storeName: READER_BOOK_STATUS_STORE_NAME });
   emitBookStatusChange();
+  await db.delete({ key: bookId, storeName: READER_BOOK_STATUS_STORE_NAME });
 };
 
 export const restoreReaderBookStatusForBook = async ({
