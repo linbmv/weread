@@ -7,7 +7,7 @@
   "scripts": {
     "pre": "sh ./bin/preinstall.sh",
     "dev": "vite --host --force --mode dev",
-    "build": "vite build",
+    "build": "vite build && node scripts/generate-pwa-service-worker.mjs",
     "tsc": "tsc --noEmit",
     "format": "prettier --write .",
     "lint": "eslint --cache ."

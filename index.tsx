@@ -1,11 +1,13 @@
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import { App } from './app';
+import { registerPWAServiceWorker } from './lib/pwa';
 import { bootstrapReaderSettings } from './lib/readerSettings';
 import 'ranui/typings';
 import './styles/base.css';
 
 bootstrapReaderSettings();
+registerPWAServiceWorker();
 
 const container = document.getElementById('app')!;
 
