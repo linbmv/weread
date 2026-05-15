@@ -25,7 +25,9 @@ export const createEmptyReaderSearchHighlight = (): ReaderSearchHighlight => ({
 });
 
 export enum EVENT_NAME {
-  CLOSE_POPOVER = 'close-popover',
+  CLOSE_READER_CONTROL_PANEL = 'close-reader-control-panel',
+  CLOSE_MOBILE_READER_CONTROL_PANEL_FADE = 'close-mobile-reader-control-panel-fade',
+  FLUSH_READER_PROGRESS = 'flush-reader-progress',
   OPEN_READER_MENU_SEARCH = 'open-reader-menu-search',
   SET_READER_CONTROL_PANEL_ACTIVE = 'set-reader-control-panel-active',
   SET_CURRENT_BOOK_PAGE = 'set-current-book-page',

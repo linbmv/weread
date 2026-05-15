@@ -7,7 +7,13 @@ import {
   saveReaderProgress,
 } from '@/lib/readerProgress';
 import type { TextSyntaxTree } from '@/lib/transformText';
-import { getReaderNavigationTarget, getReaderSearchHighlight, setReaderNavigationTarget } from '@/lib/subscribe';
+import {
+  EVENT_NAME,
+  getReaderNavigationTarget,
+  getReaderSearchHighlight,
+  setReaderNavigationTarget,
+  syncHook,
+} from '@/lib/subscribe';
 import { getChapterBlocks, getChapterTitleIds, getFirstTitleId, isValidTitleId } from '@/lib/reader/chapterStructure';
 import { useReaderAnnotationsForBook } from '@/lib/reader/useReaderAnnotationsForBook';
 import { useReaderSelectionOverlay } from '@/lib/reader/useReaderSelectionOverlay';
@@ -351,6 +357,16 @@ export const ReaderScrollContent = ({
   useLayoutEffect(() => {
     return () => {
       saveScrollDefaultLocatorRef.current();
+    };
+  }, []);
+
+  useEffect(() => {
+    const flushProgress = () => {
+      saveScrollDefaultLocatorRef.current();
+    };
+    syncHook.tap(EVENT_NAME.FLUSH_READER_PROGRESS, flushProgress);
+    return () => {
+      syncHook.off(EVENT_NAME.FLUSH_READER_PROGRESS, flushProgress);
     };
   }, []);
 

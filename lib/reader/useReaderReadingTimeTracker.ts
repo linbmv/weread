@@ -31,19 +31,10 @@ export const useReaderReadingTimeTracker = (
   useEffect(() => {
     if (!bookId || !enabled) return;
 
-    const hasDetachedReaderPopoverPanel = () => {
-      return Array.from(document.querySelectorAll<HTMLElement>('.reader-popover-panel')).some(
-        (element) => !element.closest('.reader-control-panel'),
-      );
-    };
+    const isReadingBlocked = () => getReaderControlPanelActive() || !contentVisibleRef.current;
 
-    const isReadingBlocked = () =>
-      getReaderControlPanelActive() || hasDetachedReaderPopoverPanel() || !contentVisibleRef.current;
-
-    // markActivity may fire on every wheel/scroll/touchstart event (60+/s during
-    // active reading). Cache the result of isReadingBlocked to avoid running a
-    // document-wide querySelectorAll on the hot path; refresh at most every
-    // BLOCK_CHECK_INTERVAL_MS, plus immediately on control panel events.
+    // markActivity may fire on every wheel/scroll/touchstart event during active reading.
+    // Cache panel/visibility checks on the hot path; refresh immediately on panel events.
     const BLOCK_CHECK_INTERVAL_MS = 250;
     let lastBlockCheckAt = -BLOCK_CHECK_INTERVAL_MS;
     let cachedBlocked = false;

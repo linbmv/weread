@@ -125,7 +125,7 @@ export const turnToSearchResultPage = (target: SearchResultTarget): void => {
   } else {
     setPageNum(targetPage);
   }
-  syncHook.call(EVENT_NAME.CLOSE_POPOVER);
+  syncHook.call(EVENT_NAME.CLOSE_READER_CONTROL_PANEL);
 };
 
 export const renderSearchResultSentence = (sentence: string, keyword: string): React.ReactNode[] => {

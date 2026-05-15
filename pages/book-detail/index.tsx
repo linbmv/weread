@@ -109,6 +109,7 @@ const BOOK_DETAIL_UI_EVENTS = [
 
 const MOBILE_BOOK_DETAIL_UI_EVENTS = [
   EVENT_NAME.SET_CURRENT_BOOK_DETAIL,
+  EVENT_NAME.SET_READER_NAVIGATION_TARGET,
   EVENT_NAME.SET_READER_SEARCH_HIGHLIGHT,
   EVENT_NAME.SET_TEXT_SYNTAX_TREE,
 ] as const;
@@ -241,7 +242,7 @@ const ReaderPagedContent = ({
     return map;
   }, [annotations]);
   const currentBookmark = useMemo(() => {
-    if (visiblePages !== 2) return undefined;
+    if (!bookId) return undefined;
     const spreadStart = getPagedSpreadStartPage(pageNum, visiblePages);
     for (let offset = 0; offset < visiblePages; offset += 1) {
       const bookmark = getReaderBookmarkForPage(bookId, spreadStart + offset);
@@ -256,7 +257,6 @@ const ReaderPagedContent = ({
   }, []);
 
   const showCopyToast = useCallback(() => {
-    if (visiblePages !== 2) return;
     if (copyToastTimerRef.current) {
       window.clearTimeout(copyToastTimerRef.current);
     }
@@ -276,7 +276,7 @@ const ReaderPagedContent = ({
   }, [clearSelection, copySelection, showCopyToast]);
 
   const addCurrentPageBookmark = useCallback(() => {
-    if (!bookId || visiblePages !== 2) return;
+    if (!bookId) return;
     const spreadStart = getPagedSpreadStartPage(pageNum, visiblePages);
     for (let offset = 0; offset < visiblePages; offset += 1) {
       if (getReaderBookmarkForPage(bookId, spreadStart + offset)) return;
@@ -294,7 +294,7 @@ const ReaderPagedContent = ({
   }, [bookId, layout, pageNum, visiblePages]);
 
   const togglePageBookmark = useCallback(() => {
-    if (!bookId || visiblePages !== 2) return;
+    if (!bookId) return;
     if (currentBookmark) {
       deleteReaderAnnotation(bookId, currentBookmark.id);
       return;
@@ -867,7 +867,20 @@ const ReaderPagedContent = ({
   }, [getCurrentLocator]);
 
   useEffect(() => {
-    if (!bookId || visiblePages !== 2) return;
+    const flushProgress = () => {
+      const locator = getCurrentLocator();
+      if (locator) {
+        saveReaderProgress(locator);
+      }
+    };
+    syncHook.tap(EVENT_NAME.FLUSH_READER_PROGRESS, flushProgress);
+    return () => {
+      syncHook.off(EVENT_NAME.FLUSH_READER_PROGRESS, flushProgress);
+    };
+  }, [getCurrentLocator]);
+
+  useEffect(() => {
+    if (!bookId) return;
     if (currentTitleId === undefined || !currentChapterPagination || layout.pageStep <= 0) return;
     const flow = flowRef.current;
     if (!flow) return;
@@ -935,7 +948,7 @@ const ReaderPagedContent = ({
     ],
   );
   const bookmarkControl =
-    visiblePages === 2 && bookmarkLayerElement
+    bookmarkLayerElement
       ? createPortal(
           <ReaderPageBookmarkControl active={Boolean(currentBookmark)} onToggle={togglePageBookmark} />,
           bookmarkLayerElement,
@@ -1389,6 +1402,9 @@ export const MobileBookDetail = (): React.JSX.Element => {
   const readerNavigationTarget = getReaderNavigationTarget();
   const id = useReaderBookId();
   const [pageTurnEffect, setPageTurnEffect] = useState<ReaderPageTurnEffect>(getStoredReaderPageTurnEffect);
+  const [readingMode, setReadingMode] = useState<ReaderReadingMode>(getStoredReaderReadingMode);
+  const [scrollPaddingX, setScrollPaddingX] = useState<number>(getStoredReaderScrollPaddingX);
+  const [scrollTitleId, setScrollTitleId] = useState<number | undefined>(undefined);
 
   const updateUI = useMemo(
     () =>
@@ -1422,6 +1438,11 @@ export const MobileBookDetail = (): React.JSX.Element => {
     }
   };
 
+  const hideMobileChrome = useCallback(() => {
+    setIsTouch(false);
+    syncHook.call(EVENT_NAME.CLOSE_MOBILE_READER_CONTROL_PANEL_FADE);
+  }, []);
+
   const click = (e: React.MouseEvent<HTMLDivElement>) => {
     const { clientX } = e;
     const { left, width } = e.currentTarget.getBoundingClientRect();
@@ -1429,12 +1450,16 @@ export const MobileBookDetail = (): React.JSX.Element => {
     if (!width) return;
     if (relativeX < width / 4) {
       pre();
-      setIsTouch(false);
+      hideMobileChrome();
     } else if (relativeX > (width / 4) * 3) {
       next();
-      setIsTouch(false);
+      hideMobileChrome();
     } else {
-      setIsTouch(!isTouch);
+      if (isTouch) {
+        hideMobileChrome();
+        return;
+      }
+      setIsTouch(true);
     }
   };
 
@@ -1454,17 +1479,69 @@ export const MobileBookDetail = (): React.JSX.Element => {
   useSyncHookEvents(BOOK_DETAIL_PAGE_EVENTS, updatePageUI);
 
   useEffect(() => {
-    const updatePageTurnEffect = () => {
+    const updateReaderSettings = () => {
       setPageTurnEffect(getStoredReaderPageTurnEffect());
+      setReadingMode(getStoredReaderReadingMode());
+      setScrollPaddingX(getStoredReaderScrollPaddingX());
     };
-    window.addEventListener(READER_SETTING_CHANGE_EVENT, updatePageTurnEffect);
+    window.addEventListener(READER_SETTING_CHANGE_EVENT, updateReaderSettings);
     return () => {
-      window.removeEventListener(READER_SETTING_CHANGE_EVENT, updatePageTurnEffect);
+      window.removeEventListener(READER_SETTING_CHANGE_EVENT, updateReaderSettings);
     };
   }, []);
 
   const isReaderReady = textSyntaxTree.rawText.length > 0 && textSyntaxTree.blocks.length > 0;
-  useReaderReadingTimeTracker(id, isReaderReady, 'paged');
+  useReaderReadingTimeTracker(id, isReaderReady, readingMode);
+
+  useLayoutEffect(() => {
+    if (readingMode !== 'paged') return;
+    window.scrollTo({ behavior: 'auto', left: 0, top: 0 });
+  }, [readingMode]);
+
+  useEffect(() => {
+    if (readingMode !== 'scroll') return;
+    setScrollTitleId(getScrollInitialTitleId(id || undefined, pageNum, textSyntaxTree));
+  }, [
+    id,
+    pageNum,
+    readingMode,
+    textSyntaxTree.pageTitleId,
+    textSyntaxTree.rawText,
+    textSyntaxTree.sequences,
+    textSyntaxTree.titleIdTitle,
+  ]);
+
+  useEffect(() => {
+    if (readingMode !== 'scroll' || readerNavigationTarget.revision <= 0) return;
+    const block = readerNavigationTarget.blockId
+      ? textSyntaxTree.blocks.find((item) => item.id === readerNavigationTarget.blockId)
+      : undefined;
+    const targetTitleId = isValidTitleId(textSyntaxTree, readerNavigationTarget.titleId)
+      ? readerNavigationTarget.titleId
+      : block?.titleId;
+    if (isValidTitleId(textSyntaxTree, targetTitleId)) {
+      setScrollTitleId(targetTitleId);
+    }
+  }, [
+    readerNavigationTarget.blockId,
+    readerNavigationTarget.revision,
+    readerNavigationTarget.titleId,
+    readingMode,
+    textSyntaxTree.blocks,
+    textSyntaxTree.titleIdTitle,
+  ]);
+
+  const navigateScrollTitle = useCallback(
+    (targetTitleId: number) => {
+      setScrollTitleId(targetTitleId);
+      const targetPage = getTitlePage(textSyntaxTree, targetTitleId);
+      setReaderNavigationTarget({ page: targetPage, revision: Date.now(), titleId: targetTitleId });
+      if (getPageNum() !== targetPage) {
+        setPageNum(targetPage);
+      }
+    },
+    [textSyntaxTree],
+  );
 
   if (!isReaderReady) {
     return (
@@ -1473,6 +1550,96 @@ export const MobileBookDetail = (): React.JSX.Element => {
         style={{ viewTransitionName: id ? `book-info-${id}` : undefined }}
       >
         <Loading />
+      </div>
+    );
+  }
+
+  const isScrollMode = readingMode === 'scroll';
+  const initialScrollTitleId =
+    isScrollMode && isReaderReady ? getScrollInitialTitleId(id || undefined, pageNum, textSyntaxTree) : undefined;
+  const effectiveScrollTitleId = isValidTitleId(textSyntaxTree, scrollTitleId)
+    ? scrollTitleId
+    : (initialScrollTitleId ?? getFirstTitleId(textSyntaxTree));
+  const scrollProgressLocator = getReaderProgress(id || undefined);
+  const scrollNavigationBlock = readerNavigationTarget.blockId
+    ? textSyntaxTree.blocks.find((item) => item.id === readerNavigationTarget.blockId)
+    : undefined;
+  const scrollNavigationTitleId = isValidTitleId(textSyntaxTree, readerNavigationTarget.titleId)
+    ? readerNavigationTarget.titleId
+    : scrollNavigationBlock?.titleId;
+  const hasActiveScrollNavigation =
+    readerNavigationTarget.revision > 0 && scrollNavigationTitleId === effectiveScrollTitleId;
+  const scrollTargetBlockId = hasActiveScrollNavigation ? readerNavigationTarget.blockId : undefined;
+  const scrollTargetBlockRatio =
+    hasActiveScrollNavigation &&
+    scrollNavigationBlock &&
+    typeof readerNavigationTarget.matchStart === 'number' &&
+    Number.isFinite(readerNavigationTarget.matchStart)
+      ? Math.min(Math.max(readerNavigationTarget.matchStart / Math.max(scrollNavigationBlock.text.length, 1), 0), 1)
+      : undefined;
+  const scrollTargetBlockStartPage = scrollNavigationBlock
+    ? textSyntaxTree.blockIdPage[scrollNavigationBlock.id]
+    : undefined;
+  const scrollTargetBlockEndPage = scrollNavigationBlock
+    ? (textSyntaxTree.blockIdPageEnd[scrollNavigationBlock.id] ?? scrollTargetBlockStartPage)
+    : undefined;
+  const scrollTargetBlockPageOffset =
+    hasActiveScrollNavigation &&
+    typeof readerNavigationTarget.blockPageOffset === 'number' &&
+    Number.isFinite(readerNavigationTarget.blockPageOffset)
+      ? readerNavigationTarget.blockPageOffset
+      : hasActiveScrollNavigation &&
+          typeof readerNavigationTarget.page === 'number' &&
+          Number.isFinite(readerNavigationTarget.page) &&
+          scrollTargetBlockStartPage !== undefined
+        ? Math.min(
+            Math.max(readerNavigationTarget.page - scrollTargetBlockStartPage, 0),
+            Math.max((scrollTargetBlockEndPage ?? scrollTargetBlockStartPage) - scrollTargetBlockStartPage, 0),
+          )
+        : undefined;
+  const scrollTargetPage =
+    hasActiveScrollNavigation &&
+    typeof readerNavigationTarget.page === 'number' &&
+    Number.isFinite(readerNavigationTarget.page)
+      ? readerNavigationTarget.page
+      : undefined;
+
+  if (isScrollMode) {
+    return (
+      <div className="reader-mobile-scroll-page reader-user-select-disabled" onContextMenu={preventReaderContextMenu}>
+        <div className="reader-mobile-scroll-header">
+          <button className="reader-mobile-back-button" type="button" onClick={back}>
+            <r-icon name="more" className="rotate-90" style={MOBILE_ICON_STYLE}></r-icon>
+          </button>
+          <div className="reader-mobile-scroll-title">{getCurrentBookDetail()?.title}</div>
+        </div>
+        <div
+          className="reader-mobile-scroll-container"
+          ref={ref}
+          style={
+            {
+              '--reader-scroll-padding-x': `${scrollPaddingX}px`,
+              viewTransitionName: `book-info-${id}`,
+            } as CSSProperties
+          }
+        >
+          <ReaderScrollContent
+            allowAutoSave={scrollTitleId === undefined || scrollTitleId === effectiveScrollTitleId}
+            bookId={id || undefined}
+            navigationRevision={hasActiveScrollNavigation ? readerNavigationTarget.revision : 0}
+            onNavigateTitle={navigateScrollTitle}
+            progressLocator={scrollProgressLocator}
+            targetBlockId={scrollTargetBlockId}
+            targetBlockPageOffset={scrollTargetBlockPageOffset}
+            targetPage={scrollTargetPage}
+            targetBlockRatio={scrollTargetBlockRatio}
+            textSyntaxTree={textSyntaxTree}
+            titleId={effectiveScrollTitleId}
+          />
+        </div>
+        <div className="reader-mobile-bottom-bar is-visible">
+          <MobileBookDetailOperate />
+        </div>
       </div>
     );
   }
@@ -1507,15 +1674,10 @@ export const MobileBookDetail = (): React.JSX.Element => {
             textSyntaxTree={textSyntaxTree}
             visiblePages={getVisiblePageCount(DEVICE_ENUM.MOBILE)}
           />
-          <div
-            className="absolute bottom-0 left-0 transition-all w-full flex items-center justify-between px-4 bg-front-bg-color-3 overflow-hidden z-20"
-            style={{
-              height: isTouch ? 'calc(var(--spacing) * 14)' : '0px',
-            }}
-          >
+          <div className={`reader-mobile-bottom-bar ${isTouch ? 'is-visible' : ''}`}>
             <MobileBookDetailOperate />
           </div>
-          <div className="text-right text-text-color-2 text-base absolute bottom-8 right-8 z-10">
+          <div className="reader-mobile-page-count text-right text-text-color-2 text-base absolute bottom-8 right-8 z-10">
             {pageNum + 1} / {totalPage + 1}
           </div>
         </div>

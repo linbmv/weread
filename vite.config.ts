@@ -23,8 +23,6 @@ export default defineConfig({
   publicDir: 'public',
   resolve: {
     alias: {
-      '@/components/popover': resolve(__dirname, 'components/Popover/index.tsx'),
-      '@/components/Popover': resolve(__dirname, 'components/Popover/index.tsx'),
       '@/components': resolve(__dirname, 'components'),
       '@/router': resolve(__dirname, 'router'),
       '@/lib': resolve(__dirname, 'lib'),

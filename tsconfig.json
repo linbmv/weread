@@ -24,8 +24,6 @@
       "@/types/*": ["./types/*"],
       "@/src/*": ["./src/*"],
       "@/styles/*": ["./styles/*"],
-      "@/components/popover": ["./components/Popover/index.tsx"],
-      "@/components/Popover": ["./components/Popover/index.tsx"],
       "@/components/*": ["./components/*"],
       "@/router/*": ["./router/*"],
       "@/lib/*": ["./lib/*"],

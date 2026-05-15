@@ -4,7 +4,7 @@ import { EVENT_NAME, getTextSyntaxTree, syncHook } from '@/lib/subscribe';
 import { trim } from '@/lib/transformText';
 import { OcticonSearch, OcticonXCircle } from '@/components/Octicon';
 import { t } from '@/locales';
-import type { SearchResult, ReaderMenuSearchSessionState } from '@/components/DetailMenu/types';
+import type { ReaderMenuSearchSessionState, SearchResult } from '@/components/DetailMenu/types';
 import {
   clearReaderMenuSearchSessions,
   clearReaderMenuSearchState,
@@ -214,7 +214,7 @@ export const ReaderMenuSearch = ({ idleContent }: ReaderMenuSearchProps): React.
 
   return (
     <div
-      className="reader-popover-panel w-md flex flex-col"
+      className="reader-menu-panel w-md flex flex-col"
       style={{
         height: 'calc(100vh - calc(var(--spacing) * 30))',
       }}

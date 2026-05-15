@@ -51,7 +51,7 @@ export const ReaderPageBookmarkControl = ({
   };
 
   return (
-    <div className="reader-page-bookmark-zone">
+    <div className="reader-page-bookmark-zone" data-active={active ? 'true' : 'false'}>
       <div className={`reader-page-bookmark-action-zone ${active ? 'is-active' : ''}`}>
         <button
           aria-label={label}

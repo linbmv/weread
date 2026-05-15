@@ -290,10 +290,11 @@ export const ReaderSettingControlPanel = (): React.JSX.Element => {
       const button = (e.target as HTMLElement)?.closest<HTMLButtonElement>('[data-reading-mode]');
       const mode = button?.dataset.readingMode as ReaderReadingMode | undefined;
       if (!mode) return;
+      syncHook.call(EVENT_NAME.FLUSH_READER_PROGRESS);
       setReadingMode(mode);
       saveReaderReadingMode(mode);
       emitReaderSettingChange();
-      syncHook.call(EVENT_NAME.CLOSE_POPOVER);
+      syncHook.call(EVENT_NAME.CLOSE_READER_CONTROL_PANEL);
     };
 
     optionElement.addEventListener('click', onClick);

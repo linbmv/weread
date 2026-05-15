@@ -58,7 +58,7 @@ export const BookCoverFallback = ({
 }): React.JSX.Element => {
   return (
     <div className={`book-cover-fallback ${className}`} aria-hidden="true" item-id={itemId} title={title}>
-      <svg xmlns="http://www.w3.org/2000/svg" width="50%" height="50%" fill-opacity="0.3" viewBox="0 0 7 8"><path fill="currentColor" d="M1 0C.93 0 .87.01.81.03C.42.11.11.42.03.81C0 .87 0 .93 0 1v5.5C0 7.33.67 8 1.5 8H7V7H1.5c-.28 0-.5-.22-.5-.5s.22-.5.5-.5H7V.5c0-.28-.22-.5-.5-.5H6v3L5 2L4 3V0z"></path></svg>
+      <svg xmlns="http://www.w3.org/2000/svg" width="60%" height="60%" fill-opacity="0.3" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 19V4a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v13H7a2 2 0 0 0-2 2m0 0a2 2 0 0 0 2 2h12M9 3v14m7 0v4"/></svg>
     </div>
   );
 };

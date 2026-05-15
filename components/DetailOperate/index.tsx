@@ -1,14 +1,14 @@
 ﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Popover } from '@/components/popover';
 import { BookDetailMenu } from '@/components/DetailMenu';
 import { EVENT_NAME, setReaderControlPanelActive, syncHook } from '@/lib/subscribe';
-import { OcticonFont, OcticonMenu, OcticonNote, OcticonReadingMode } from '@/components/Octicon';
+import { OcticonFont, OcticonMenu, OcticonMoon, OcticonNote, OcticonReadingMode, OcticonSun } from '@/components/Octicon';
 import { ReaderFontControlPanel } from '@/components/DetailOperate/ReaderFontControlPanel';
 import { ReaderNotePanel } from '@/components/DetailOperate/ReaderNotePanel';
 import { ReaderControlPanelLayer } from '@/components/DetailOperate/ReaderControlPanelLayer';
 import { ReaderControlTooltip } from '@/components/DetailOperate/ReaderControlTooltip';
 import { ReaderSettingControlPanel } from '@/components/DetailOperate/ReaderSettingControlPanel';
 import { ReaderThemeControl } from '@/components/DetailOperate/ReaderThemeControl';
+import { type ReaderTheme, applyReaderTheme, getStoredReaderTheme, saveReaderTheme } from '@/lib/readerSettings';
 import {
   READER_CONTROL_PANEL_MOTION_DURATION,
   type ReaderControlPanelMotion,
@@ -23,6 +23,23 @@ const ReaderNoteIcon = (): React.JSX.Element => <OcticonNote />;
 const ReaderSettingIcon = (): React.JSX.Element => <OcticonReadingMode />;
 
 const ReaderFontIcon = (): React.JSX.Element => <OcticonFont />;
+
+const ReaderSunIcon = (): React.JSX.Element => <OcticonSun />;
+
+const ReaderMoonIcon = (): React.JSX.Element => <OcticonMoon />;
+
+const MOBILE_CONTROL_BUTTONS: Array<{
+  Icon: () => React.JSX.Element;
+  label: string;
+  panel: ReaderControlPanelType;
+}> = [
+  { Icon: ReaderMenuIcon, label: '目录', panel: 'menu' },
+  { Icon: ReaderNoteIcon, label: '笔记', panel: 'note' },
+  { Icon: ReaderSettingIcon, label: '阅读设置', panel: 'setting' },
+  { Icon: ReaderFontIcon, label: '字体', panel: 'font' },
+];
+
+const READER_MOBILE_CONTROL_PANEL_FADE_DURATION = 180;
 
 export const BookDetailOperate = (): React.JSX.Element => {
   const controlsRef = useRef<HTMLDivElement>(null);
@@ -112,9 +129,9 @@ export const BookDetailOperate = (): React.JSX.Element => {
   }, [panelMotion, panelMotionId, renderedPanel]);
 
   useEffect(() => {
-    syncHook.tap(EVENT_NAME.CLOSE_POPOVER, closePanel);
+    syncHook.tap(EVENT_NAME.CLOSE_READER_CONTROL_PANEL, closePanel);
     return () => {
-      syncHook.off(EVENT_NAME.CLOSE_POPOVER, closePanel);
+      syncHook.off(EVENT_NAME.CLOSE_READER_CONTROL_PANEL, closePanel);
     };
   }, [closePanel]);
 
@@ -234,14 +251,229 @@ export const BookDetailOperate = (): React.JSX.Element => {
   );
 };
 
-export const MobileBookDetailOperate = (): React.JSX.Element => {
+const MobileReaderThemeButton = ({ onBeforeToggle }: { onBeforeToggle: () => void }): React.JSX.Element => {
+  const [theme, setTheme] = useState<ReaderTheme>(getStoredReaderTheme);
+
+  const toggleTheme = () => {
+    const nextTheme = theme === 'dark' ? 'light' : 'dark';
+    onBeforeToggle();
+    setTheme(nextTheme);
+    saveReaderTheme(nextTheme);
+    applyReaderTheme(nextTheme);
+  };
+
   return (
-    <div className="cursor-pointer">
-      <Popover placement="top" trigger="click" overlay={<BookDetailMenu />}>
-        <div className="reader-mobile-menu-trigger bg-front-bg-color-3 rounded-4xl flex items-center justify-center cursor-pointer">
-          <ReaderMenuIcon />
+    <button
+      aria-label={theme === 'dark' ? '浅色' : '深色'}
+      className="reader-mobile-menu-button"
+      type="button"
+      onClick={toggleTheme}
+    >
+      {theme === 'dark' ? <ReaderSunIcon /> : <ReaderMoonIcon />}
+    </button>
+  );
+};
+
+export const MobileBookDetailOperate = (): React.JSX.Element => {
+  const panelCloseTimerRef = useRef<number | null>(null);
+  const panelMotionTimerRef = useRef<number | null>(null);
+  const touchStartYRef = useRef<number | null>(null);
+  const [activePanel, setActivePanel] = useState<ReaderControlPanelType | null>(null);
+  const [renderedPanel, setRenderedPanel] = useState<ReaderControlPanelType | null>(null);
+  const [pendingPanel, setPendingPanel] = useState<ReaderControlPanelType | null>(null);
+  const [panelMotion, setPanelMotion] = useState<ReaderControlPanelMotion>('enter');
+  const [panelMotionId, setPanelMotionId] = useState(0);
+
+  const clearPanelTimers = useCallback(() => {
+    if (panelCloseTimerRef.current) {
+      window.clearTimeout(panelCloseTimerRef.current);
+      panelCloseTimerRef.current = null;
+    }
+    if (panelMotionTimerRef.current) {
+      window.clearTimeout(panelMotionTimerRef.current);
+      panelMotionTimerRef.current = null;
+    }
+  }, []);
+
+  const openPanelImmediately = useCallback(
+    (panel: ReaderControlPanelType) => {
+      clearPanelTimers();
+      setPendingPanel(null);
+      setRenderedPanel(panel);
+      setActivePanel(panel);
+      setPanelMotion('enter');
+      setPanelMotionId((prev) => prev + 1);
+    },
+    [clearPanelTimers],
+  );
+
+  const closePanel = useCallback(
+    (nextPanel: ReaderControlPanelType | null = null, motion: ReaderControlPanelMotion = 'exit') => {
+      clearPanelTimers();
+      setPendingPanel(nextPanel);
+      setActivePanel(null);
+      setPanelMotion(motion);
+      setPanelMotionId((prev) => prev + 1);
+      const closeDuration =
+        motion === 'fade-exit' ? READER_MOBILE_CONTROL_PANEL_FADE_DURATION : READER_CONTROL_PANEL_MOTION_DURATION;
+      panelCloseTimerRef.current = window.setTimeout(() => {
+        panelCloseTimerRef.current = null;
+        if (nextPanel) {
+          setRenderedPanel(nextPanel);
+          setPendingPanel(null);
+          setActivePanel(nextPanel);
+          setPanelMotion('enter');
+          setPanelMotionId((prev) => prev + 1);
+          return;
+        }
+        setRenderedPanel(null);
+        setPendingPanel(null);
+      }, closeDuration);
+    },
+    [clearPanelTimers],
+  );
+
+  const togglePanel = useCallback(
+    (panel: ReaderControlPanelType) => {
+      if (activePanel === panel) {
+        closePanel();
+        return;
+      }
+      if (renderedPanel) {
+        closePanel(panel);
+        return;
+      }
+      openPanelImmediately(panel);
+    },
+    [activePanel, closePanel, openPanelImmediately, renderedPanel],
+  );
+
+  const closeActivePanel = useCallback(() => {
+    if (renderedPanel) {
+      closePanel();
+    }
+  }, [closePanel, renderedPanel]);
+
+  const fadeOutActivePanel = useCallback(() => {
+    if (renderedPanel) {
+      closePanel(null, 'fade-exit');
+    }
+  }, [closePanel, renderedPanel]);
+
+  useEffect(() => {
+    return () => {
+      clearPanelTimers();
+      setReaderControlPanelActive(false);
+    };
+  }, [clearPanelTimers]);
+
+  useEffect(() => {
+    setReaderControlPanelActive(Boolean(renderedPanel));
+    return () => {
+      setReaderControlPanelActive(false);
+    };
+  }, [renderedPanel]);
+
+  useEffect(() => {
+    if (!renderedPanel || panelMotion !== 'enter') return;
+    panelMotionTimerRef.current = window.setTimeout(() => {
+      setPanelMotion('idle');
+      panelMotionTimerRef.current = null;
+    }, READER_CONTROL_PANEL_MOTION_DURATION);
+    return () => {
+      if (panelMotionTimerRef.current) {
+        window.clearTimeout(panelMotionTimerRef.current);
+        panelMotionTimerRef.current = null;
+      }
+    };
+  }, [panelMotion, panelMotionId, renderedPanel]);
+
+  useEffect(() => {
+    syncHook.tap(EVENT_NAME.CLOSE_READER_CONTROL_PANEL, closeActivePanel);
+    return () => {
+      syncHook.off(EVENT_NAME.CLOSE_READER_CONTROL_PANEL, closeActivePanel);
+    };
+  }, [closeActivePanel]);
+
+  useEffect(() => {
+    syncHook.tap(EVENT_NAME.CLOSE_MOBILE_READER_CONTROL_PANEL_FADE, fadeOutActivePanel);
+    return () => {
+      syncHook.off(EVENT_NAME.CLOSE_MOBILE_READER_CONTROL_PANEL_FADE, fadeOutActivePanel);
+    };
+  }, [fadeOutActivePanel]);
+
+  useEffect(() => {
+    const openMenuSearchPanel = () => {
+      if (activePanel === 'menu') return;
+      if (renderedPanel) {
+        closePanel('menu');
+        return;
+      }
+      openPanelImmediately('menu');
+    };
+    syncHook.tap(EVENT_NAME.OPEN_READER_MENU_SEARCH, openMenuSearchPanel);
+    return () => {
+      syncHook.off(EVENT_NAME.OPEN_READER_MENU_SEARCH, openMenuSearchPanel);
+    };
+  }, [activePanel, closePanel, openPanelImmediately, renderedPanel]);
+
+  const panelContent = useMemo(() => {
+    if (renderedPanel === 'menu') return <BookDetailMenu />;
+    if (renderedPanel === 'note') return <ReaderNotePanel />;
+    if (renderedPanel === 'setting') return <ReaderSettingControlPanel />;
+    if (renderedPanel === 'font') return <ReaderFontControlPanel />;
+    return null;
+  }, [renderedPanel]);
+
+  const onPanelTouchStart = (event: React.TouchEvent<HTMLDivElement>) => {
+    touchStartYRef.current = event.touches[0]?.clientY ?? null;
+  };
+
+  const onPanelTouchEnd = (event: React.TouchEvent<HTMLDivElement>) => {
+    const startY = touchStartYRef.current;
+    touchStartYRef.current = null;
+    if (startY === null) return;
+    const endY = event.changedTouches[0]?.clientY ?? startY;
+    if (endY - startY > 72) {
+      closePanel();
+    }
+  };
+
+  return (
+    <>
+      <div className="reader-mobile-menu">
+        {MOBILE_CONTROL_BUTTONS.map(({ Icon, label, panel }) => {
+          const isActive = activePanel === panel || pendingPanel === panel;
+          return (
+            <button
+              aria-label={label}
+              aria-expanded={activePanel === panel}
+              className={`reader-mobile-menu-button ${isActive ? 'is-active' : ''}`}
+              key={panel}
+              type="button"
+              onClick={() => togglePanel(panel)}
+            >
+              <Icon />
+            </button>
+          );
+        })}
+        <MobileReaderThemeButton onBeforeToggle={closeActivePanel} />
+      </div>
+
+      {renderedPanel ? (
+        <div className="reader-mobile-panel-layer">
+          <div
+            className="reader-mobile-control-panel"
+            data-motion={panelMotion}
+            data-motion-id={panelMotionId}
+            data-reader-control-panel={renderedPanel}
+            onTouchEnd={onPanelTouchEnd}
+            onTouchStart={onPanelTouchStart}
+          >
+            {panelContent}
+          </div>
         </div>
-      </Popover>
-    </div>
+      ) : null}
+    </>
   );
 };

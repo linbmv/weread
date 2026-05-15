@@ -29,8 +29,22 @@ const CATALOGUE_META_EVENTS = [
   EVENT_NAME.SET_TEXT_SYNTAX_TREE,
 ] as const;
 
+const CatalogueMobileScrollIcon = ({ direction }: { direction: SORT_DIRECTION }): React.JSX.Element => {
+  if (direction === SORT_DIRECTION.DOWN) {
+    return (
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16">
+        <path d="M7.47 10.78a.749.749 0 0 0 1.06 0l3.75-3.75a.749.749 0 1 0-1.06-1.06L8.75 8.439V1.75a.75.75 0 0 0-1.5 0v6.689L4.78 5.97a.749.749 0 1 0-1.06 1.06l3.75 3.75ZM3.75 13a.75.75 0 0 0 0 1.5h8.5a.75.75 0 0 0 0-1.5h-8.5Z"></path>
+      </svg>
+    );
+  }
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16">
+      <path d="M3 2.25a.75.75 0 0 1 .75-.75h8.5a.75.75 0 0 1 0 1.5h-8.5A.75.75 0 0 1 3 2.25Zm5.53 2.97 3.75 3.75a.749.749 0 1 1-1.06 1.06L8.75 7.561v6.689a.75.75 0 0 1-1.5 0V7.561L4.78 10.03a.749.749 0 1 1-1.06-1.06l3.75-3.75a.749.749 0 0 1 1.06 0Z"></path>
+    </svg>
+  );
+};
+
 export const Catalogue = (): React.JSX.Element => {
-  const sortRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const hasAlignedCurrentTitleRef = useRef(false);
   const [sortDirection, setSortDirection] = useState(SORT_DIRECTION.DOWN);
@@ -110,12 +124,10 @@ export const Catalogue = (): React.JSX.Element => {
 
   useEffect(() => {
     scrollRef.current?.addEventListener('click', turnToCatalogueTitle);
-    sortRef.current?.addEventListener('click', toSort);
     return () => {
       scrollRef.current?.removeEventListener('click', turnToCatalogueTitle);
-      sortRef.current?.removeEventListener('click', toSort);
     };
-  }, [toSort]);
+  }, []);
 
   useEffect(() => {
     updateCatalogueMeta();
@@ -148,7 +160,7 @@ export const Catalogue = (): React.JSX.Element => {
           <OcticonClock />
           <div>{readingDurationLabel}</div>
         </div>
-        <div ref={sortRef}>
+        <button className="readerCatalog_sort_button" type="button" onClick={toSort}>
           <OcticonSortAsc
             className={`cursor-pointer hover-icon ${sortDirection}`}
             style={{
@@ -156,7 +168,7 @@ export const Catalogue = (): React.JSX.Element => {
               transition: 'transform 180ms ease',
             }}
           />
-        </div>
+        </button>
       </div>
       <div className="reader-menu-scroll-area overflow-y-auto flex-auto" ref={scrollRef}>
         {textSyntaxTree?.sequences?.map((item) => {
@@ -205,6 +217,10 @@ export const Catalogue = (): React.JSX.Element => {
           );
         })}
       </div>
+      <button className="readerCatalog_mobile_scroll_button" type="button" onClick={toSort}>
+        <CatalogueMobileScrollIcon direction={sortDirection} />
+        <span>{sortDirection === SORT_DIRECTION.DOWN ? '去底部' : '去顶部'}</span>
+      </button>
       <BookDataPanel
         bookDetail={bookDetail}
         coverFailed={coverFailed}

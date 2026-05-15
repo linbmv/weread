@@ -23,7 +23,7 @@ export const ReaderThemeControl = (): React.JSX.Element => {
       startViewTransition?: (callback: () => void) => { finished: Promise<void> };
     };
 
-    syncHook.call(EVENT_NAME.CLOSE_POPOVER);
+    syncHook.call(EVENT_NAME.CLOSE_READER_CONTROL_PANEL);
 
     if (viewTransitionDocument.startViewTransition && !prefersReducedMotion) {
       viewTransitionDocument.startViewTransition(applyNextTheme);

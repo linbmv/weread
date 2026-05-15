@@ -149,7 +149,7 @@ export const ReaderNotePanel = (): React.JSX.Element => {
       if (Number.isFinite(page) && getPageNum() !== page) {
         setPageNum(page);
       }
-      syncHook.call(EVENT_NAME.CLOSE_POPOVER);
+    syncHook.call(EVENT_NAME.CLOSE_READER_CONTROL_PANEL);
     },
     [textSyntaxTree],
   );
