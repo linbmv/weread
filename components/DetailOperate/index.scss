@@ -211,8 +211,9 @@
   inset: 0 0 calc(var(--spacing) * 14);
   display: flex;
   align-items: flex-end;
-  pointer-events: none;
+  pointer-events: auto;
   overflow: hidden;
+  overscroll-behavior: contain;
 }
 
 .reader-mobile-control-panel {
@@ -228,6 +229,7 @@
   box-sizing: border-box;
   color: var(--text-color-1);
   overflow: hidden;
+  overscroll-behavior: contain;
   will-change: transform;
 }
 
@@ -362,6 +364,7 @@
 .reader-mobile-control-panel[data-reader-control-panel='setting'] .reader-setting-control-panel-wrapper {
   max-height: calc(100dvh - calc(var(--spacing) * 14) - 16px);
   overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .reader-mobile-control-panel[data-reader-control-panel='font'] .reader-font-control-panel-wrapper {
@@ -372,6 +375,11 @@
 .reader-mobile-control-panel[data-reader-control-panel='font'] .reader-font-control-panel-wrapper,
 .reader-mobile-control-panel[data-reader-control-panel='note'] .reader-note-panel-wrapper {
   overflow: hidden;
+}
+
+.reader-mobile-control-panel .reader-menu-scroll-area,
+.reader-mobile-control-panel .reader-note-panel-list {
+  overscroll-behavior: contain;
 }
 
 .reader-control-button r-icon {
@@ -995,6 +1003,16 @@
   .reader-font-action-area {
     width: auto;
     justify-content: flex-end;
+  }
+
+  .reader-mobile-control-panel[data-reader-control-panel='setting'] .reader-setting-control-panel-wrapper {
+    scrollbar-width: none;
+  }
+
+  .reader-mobile-control-panel[data-reader-control-panel='setting'] .reader-setting-control-panel-wrapper::-webkit-scrollbar {
+    display: none;
+    width: 0;
+    height: 0;
   }
 }
 

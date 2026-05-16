@@ -1443,6 +1443,13 @@ export const MobileBookDetail = (): React.JSX.Element => {
     syncHook.call(EVENT_NAME.CLOSE_MOBILE_READER_CONTROL_PANEL_FADE);
   }, []);
 
+  useEffect(() => {
+    syncHook.tap(EVENT_NAME.CLOSE_MOBILE_READER_CHROME, hideMobileChrome);
+    return () => {
+      syncHook.off(EVENT_NAME.CLOSE_MOBILE_READER_CHROME, hideMobileChrome);
+    };
+  }, [hideMobileChrome]);
+
   const click = (e: React.MouseEvent<HTMLDivElement>) => {
     const { clientX } = e;
     const { left, width } = e.currentTarget.getBoundingClientRect();
@@ -1462,6 +1469,27 @@ export const MobileBookDetail = (): React.JSX.Element => {
       setIsTouch(true);
     }
   };
+
+  const toggleMobileChrome = useCallback(() => {
+    if (isTouch) {
+      hideMobileChrome();
+      return;
+    }
+    setIsTouch(true);
+  }, [hideMobileChrome, isTouch]);
+
+  useEffect(() => {
+    if (readingMode !== 'scroll' || !isTouch) return;
+    const hideVisibleChrome = () => {
+      hideMobileChrome();
+    };
+    window.addEventListener('scroll', hideVisibleChrome, { passive: true });
+    window.addEventListener('touchmove', hideVisibleChrome, { passive: true });
+    return () => {
+      window.removeEventListener('scroll', hideVisibleChrome);
+      window.removeEventListener('touchmove', hideVisibleChrome);
+    };
+  }, [hideMobileChrome, isTouch, readingMode]);
 
   const back = () => {
     startSpaViewTransition(() => {
@@ -1607,7 +1635,7 @@ export const MobileBookDetail = (): React.JSX.Element => {
   if (isScrollMode) {
     return (
       <div className="reader-mobile-scroll-page reader-user-select-disabled" onContextMenu={preventReaderContextMenu}>
-        <div className="reader-mobile-scroll-header">
+        <div className={`reader-mobile-scroll-header ${isTouch ? 'is-visible' : ''}`}>
           <button className="reader-mobile-back-button" type="button" onClick={back}>
             <r-icon name="more" className="rotate-90" style={MOBILE_ICON_STYLE}></r-icon>
           </button>
@@ -1622,6 +1650,7 @@ export const MobileBookDetail = (): React.JSX.Element => {
               viewTransitionName: `book-info-${id}`,
             } as CSSProperties
           }
+          onClick={toggleMobileChrome}
         >
           <ReaderScrollContent
             allowAutoSave={scrollTitleId === undefined || scrollTitleId === effectiveScrollTitleId}
@@ -1637,7 +1666,7 @@ export const MobileBookDetail = (): React.JSX.Element => {
             titleId={effectiveScrollTitleId}
           />
         </div>
-        <div className="reader-mobile-bottom-bar is-visible">
+        <div className={`reader-mobile-bottom-bar ${isTouch ? 'is-visible' : ''}`}>
           <MobileBookDetailOperate />
         </div>
       </div>

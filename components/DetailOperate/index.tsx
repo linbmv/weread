@@ -1,5 +1,5 @@
 ﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { CSSProperties } from 'react';
+import type { CSSProperties, SyntheticEvent } from 'react';
 import { BookDetailMenu } from '@/components/DetailMenu';
 import { EVENT_NAME, setReaderControlPanelActive, syncHook } from '@/lib/subscribe';
 import { OcticonFont, OcticonMenu, OcticonMoon, OcticonNote, OcticonReadingMode, OcticonSun } from '@/components/Octicon';
@@ -376,6 +376,10 @@ export const MobileBookDetailOperate = (): React.JSX.Element => {
     }
   }, [closePanel, renderedPanel]);
 
+  const closeMobileChrome = useCallback(() => {
+    syncHook.call(EVENT_NAME.CLOSE_MOBILE_READER_CHROME);
+  }, []);
+
   useEffect(() => {
     return () => {
       clearPanelTimers();
@@ -387,6 +391,27 @@ export const MobileBookDetailOperate = (): React.JSX.Element => {
     setReaderControlPanelActive(Boolean(renderedPanel));
     return () => {
       setReaderControlPanelActive(false);
+    };
+  }, [renderedPanel]);
+
+  useEffect(() => {
+    if (!renderedPanel) return;
+    const { body, documentElement } = document;
+    const previousBodyOverflow = body.style.overflow;
+    const previousBodyOverscrollBehaviorY = body.style.overscrollBehaviorY;
+    const previousDocumentOverflow = documentElement.style.overflow;
+    const previousDocumentOverscrollBehaviorY = documentElement.style.overscrollBehaviorY;
+
+    body.style.overflow = 'hidden';
+    body.style.overscrollBehaviorY = 'none';
+    documentElement.style.overflow = 'hidden';
+    documentElement.style.overscrollBehaviorY = 'none';
+
+    return () => {
+      body.style.overflow = previousBodyOverflow;
+      body.style.overscrollBehaviorY = previousBodyOverscrollBehaviorY;
+      documentElement.style.overflow = previousDocumentOverflow;
+      documentElement.style.overscrollBehaviorY = previousDocumentOverscrollBehaviorY;
     };
   }, [renderedPanel]);
 
@@ -441,7 +466,12 @@ export const MobileBookDetailOperate = (): React.JSX.Element => {
     return null;
   }, [renderedPanel]);
 
+  const stopPanelEventPropagation = (event: SyntheticEvent<HTMLDivElement>) => {
+    event.stopPropagation();
+  };
+
   const onPanelTouchStart = (event: React.TouchEvent<HTMLDivElement>) => {
+    event.stopPropagation();
     const clientY = event.touches[0]?.clientY;
     if (clientY === undefined || (renderedPanel !== 'menu' && renderedPanel !== 'note')) {
       touchStartYRef.current = null;
@@ -455,18 +485,20 @@ export const MobileBookDetailOperate = (): React.JSX.Element => {
   };
 
   const onPanelTouchMove = (event: React.TouchEvent<HTMLDivElement>) => {
+    event.stopPropagation();
     const startY = touchStartYRef.current;
     if (startY === null || !touchDragEnabledRef.current) return;
-    const currentY = event.touches[0]?.clientY ?? startY;
-    const nextDragY = Math.max(currentY - startY, 0);
-    if (nextDragY > 0) {
+    if (event.cancelable) {
       event.preventDefault();
     }
+    const currentY = event.touches[0]?.clientY ?? startY;
+    const nextDragY = Math.max(currentY - startY, 0);
     setPanelDragY(nextDragY);
     setIsDraggingPanel(true);
   };
 
   const onPanelTouchEnd = (event: React.TouchEvent<HTMLDivElement>) => {
+    event.stopPropagation();
     const startY = touchStartYRef.current;
     touchStartYRef.current = null;
     touchDragEnabledRef.current = false;
@@ -505,16 +537,18 @@ export const MobileBookDetailOperate = (): React.JSX.Element => {
       </div>
 
       {renderedPanel ? (
-        <div className="reader-mobile-panel-layer">
+        <div className="reader-mobile-panel-layer" onClick={closeMobileChrome}>
           <div
             className={`reader-mobile-control-panel ${isDraggingPanel ? 'is-dragging' : ''}`}
             data-motion={panelMotion}
             data-motion-id={panelMotionId}
             data-reader-control-panel={renderedPanel}
             style={{ '--reader-mobile-panel-drag-y': `${panelDragY}px` } as CSSProperties}
+            onClick={stopPanelEventPropagation}
             onTouchEnd={onPanelTouchEnd}
             onTouchMove={onPanelTouchMove}
             onTouchStart={onPanelTouchStart}
+            onWheel={stopPanelEventPropagation}
           >
             {panelContent}
           </div>

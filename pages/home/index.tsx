@@ -52,15 +52,6 @@ const DESKTOP_INPUT_STYLE = {
   '--ran-input-content-font-weight': '400',
 };
 
-const MOBILE_INPUT_STYLE = {
-  '--ran-input-border-radius': '2rem',
-  '--ran-input-content-border-radius': '2rem',
-  '--ran-input-content-padding': '10px 36px 10px 36px',
-  '--ran-input-content-font-size': '16px',
-  '--ran-input-content-font-weight': '400',
-  '--ran-input-padding': '0px',
-};
-
 const MAX_BOOK_LOAD_RETRIES = 3;
 
 const BOOK_IMPORT_TIMEOUT_MS = 180_000;
@@ -1208,39 +1199,17 @@ export const MobileHome = (): React.JSX.Element => {
   return (
     <div className="w-full min-h-svh bg-front-bg-color-2">
       <div className="p-5">
-        <div className="home-search-field relative w-full h-9 block mx-auto">
-          <HomeSearchIcon
-            className="absolute left-5 top-1/2 -translate-y-1/2 pointer-events-none z-10"
-            style={{ width: 16, height: 16, color: 'var(--icon-color-1)' }}
-          />
-          <r-input
-            className="w-full h-full block mx-auto"
-            style={MOBILE_INPUT_STYLE}
-            placeholder={t('search')}
+        <div className="home-mobile-search">
+          <HomeSearchIcon className="home-mobile-search-icon" />
+          <input
             ref={inputRef}
-          ></r-input>
+            placeholder={t('search')}
+            type="text"
+          />
           {searchState.searchValue && (
             <button
               aria-label="清除搜索"
-              className="reader-search-clear-button"
-              style={{
-                position: 'absolute',
-                right: 16,
-                top: '50%',
-                zIndex: 20,
-                display: 'flex',
-                width: 16,
-                height: 16,
-                alignItems: 'center',
-                justifyContent: 'center',
-                padding: 0,
-                border: 0,
-                borderRadius: 999,
-                background: 'transparent',
-                color: '#8c8c8e',
-                cursor: 'pointer',
-                transform: 'translateY(-50%)',
-              }}
+              className="home-mobile-search-clear reader-search-clear-button"
               type="button"
               onMouseDown={(event) => event.preventDefault()}
               onClick={searchState.clearSearch}
