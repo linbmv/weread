@@ -29,6 +29,17 @@
 .book-cover-fallback span {
   transform: translateY(-1px);
 }
+
+.book-card-mobile-title {
+  display: -webkit-box;
+  overflow: hidden;
+  max-height: 4.5em;
+  line-height: 1.5;
+  text-overflow: ellipsis;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+}
 // ::view-transition-new(book-info) {
 //   mix-blend-mode: normal;
 //   animation: clip 0.5s ease-in;

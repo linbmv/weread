@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { type ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   DEFAULT_READER_FONT,
   DEFAULT_READER_FONT_SIZE,
@@ -28,16 +28,53 @@ const FONT_SIZE_SLIDER_THUMB_RADIUS = FONT_SIZE_SLIDER_THUMB_SIZE / 2;
 
 const FONT_SIZE_APPLY_DELAY = 300;
 
+const LOCAL_FONT_FILE_PATTERN = /\.(?:otf|ttf|woff|woff2)$/i;
+
 let readerSessionSystemFonts: ReaderFontSetting[] = [];
+
+const isMobileFontAccessViewport = (): boolean => {
+  if (typeof window === 'undefined') return false;
+  return window.matchMedia('(max-width: 760px)').matches;
+};
+
+const getLocalFontLabel = (fileName: string): string => {
+  return fileName.replace(/\.(?:otf|ttf|woff|woff2)$/i, '').trim() || fileName;
+};
+
+const loadLocalFontFiles = async (files: File[]): Promise<ReaderFontSetting[]> => {
+  const loadedFonts: ReaderFontSetting[] = [];
+  const timestamp = Date.now();
+
+  for (const [index, file] of files.entries()) {
+    if (!LOCAL_FONT_FILE_PATTERN.test(file.name)) continue;
+    const label = getLocalFontLabel(file.name);
+    const family = `WereadLocalFont-${timestamp}-${index}`;
+    try {
+      const fontFace = new FontFace(family, await file.arrayBuffer());
+      await fontFace.load();
+      document.fonts.add(fontFace);
+      loadedFonts.push({
+        id: `system-${family}`,
+        label,
+        family,
+        source: 'system',
+      });
+    } catch {
+      // Ignore unsupported or broken font files in the selected folder.
+    }
+  }
+
+  return loadedFonts;
+};
 
 const clampReaderFontSize = (value: number): number => {
   return Math.min(Math.max(value, MIN_READER_FONT_SIZE), MAX_READER_FONT_SIZE);
 };
 
 export const ReaderFontControlPanel = (): React.JSX.Element => {
-  const accessButtonRef = useRef<HTMLButtonElement>(null);
   const categoryRef = useRef<HTMLDivElement>(null);
   const fontGridRef = useRef<HTMLDivElement>(null);
+  const localFontInputRef = useRef<HTMLInputElement>(null);
   const fontSizeSliderRef = useRef<HTMLDivElement>(null);
   const fontSizeApplyTimerRef = useRef<number | null>(null);
   const isDraggingFontSizeRef = useRef(false);
@@ -50,6 +87,7 @@ export const ReaderFontControlPanel = (): React.JSX.Element => {
   const [isLoadingFonts, setIsLoadingFonts] = useState(false);
   const [fontAccessMessage, setFontAccessMessage] = useState('');
   const [isDraggingFontSize, setIsDraggingFontSize] = useState(false);
+  const [isMobileFontAccess, setIsMobileFontAccess] = useState(isMobileFontAccessViewport);
 
   useEffect(() => {
     const storedFont = getStoredReaderFont();
@@ -75,6 +113,31 @@ export const ReaderFontControlPanel = (): React.JSX.Element => {
       }
     };
   }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const media = window.matchMedia('(max-width: 760px)');
+    const updateMobileFontAccess = () => {
+      setIsMobileFontAccess(media.matches);
+    };
+    updateMobileFontAccess();
+    media.addEventListener('change', updateMobileFontAccess);
+    return () => {
+      media.removeEventListener('change', updateMobileFontAccess);
+    };
+  }, []);
+
+  useEffect(() => {
+    const input = localFontInputRef.current;
+    if (!input) return;
+    if (isMobileFontAccess) {
+      input.setAttribute('webkitdirectory', '');
+      input.setAttribute('directory', '');
+      return;
+    }
+    input.removeAttribute('webkitdirectory');
+    input.removeAttribute('directory');
+  }, [isMobileFontAccess]);
 
   const fontOptions = useMemo(() => {
     const optionMap = new Map<string, ReaderFontSetting>();
@@ -182,17 +245,31 @@ export const ReaderFontControlPanel = (): React.JSX.Element => {
     }
   }, []);
 
-  useEffect(() => {
-    const accessButton = accessButtonRef.current;
-    if (!accessButton) return;
-    const onClick = () => {
-      void requestSystemFonts();
-    };
-    accessButton.addEventListener('click', onClick);
-    return () => {
-      accessButton.removeEventListener('click', onClick);
-    };
-  }, [requestSystemFonts]);
+  const requestLocalFonts = useCallback(() => {
+    setFontAccessMessage('');
+    localFontInputRef.current?.click();
+  }, []);
+
+  const onLocalFontInputChange = useCallback(async (event: ChangeEvent<HTMLInputElement>) => {
+    const input = event.currentTarget;
+    const files = Array.from(input.files || []);
+    input.value = '';
+    if (files.length === 0) return;
+
+    setIsLoadingFonts(true);
+    setFontAccessMessage('正在加载本地字体...');
+    try {
+      const localFonts = await loadLocalFontFiles(files);
+      const nextFonts = mergeReaderFonts(readerSessionSystemFonts, localFonts);
+      readerSessionSystemFonts = nextFonts;
+      setSystemFonts(nextFonts);
+      setFontAccessMessage(localFonts.length > 0 ? '' : '未找到可加载字体');
+    } finally {
+      setIsLoadingFonts(false);
+    }
+  }, []);
+
+  const requestFontAccess = isMobileFontAccess ? requestLocalFonts : requestSystemFonts;
 
   useEffect(() => {
     const categoryElement = categoryRef.current;
@@ -341,9 +418,24 @@ export const ReaderFontControlPanel = (): React.JSX.Element => {
           <div className="reader-font-panel-title">字体</div>
           <div className="reader-font-action-area">
             {fontAccessMessage && <span className="reader-font-access-message">{fontAccessMessage}</span>}
-            <button ref={accessButtonRef} className="reader-font-access-button" disabled={isLoadingFonts} type="button">
-              {isLoadingFonts ? '获取中...' : '获取系统字体'}
+            <button
+              className="reader-font-access-button"
+              disabled={isLoadingFonts}
+              type="button"
+              onClick={() => {
+                void requestFontAccess();
+              }}
+            >
+              {isLoadingFonts ? '加载中...' : isMobileFontAccess ? '加载本地字体' : '获取系统字体'}
             </button>
+            <input
+              ref={localFontInputRef}
+              accept=".otf,.ttf,.woff,.woff2"
+              className="reader-font-local-input"
+              multiple
+              type="file"
+              onChange={onLocalFontInputChange}
+            />
           </div>
         </div>
 

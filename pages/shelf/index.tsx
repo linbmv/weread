@@ -3,7 +3,7 @@ import type { Dispatch, SetStateAction } from 'react';
 import { Link, useHref, useNavigate } from 'react-router-dom';
 import { BookCoverFallback } from '@/components/BookCard';
 import { Loading } from '@/components/Loading';
-import { OcticonSearch as ShelfSearchIcon } from '@/components/Octicon';
+import { OcticonXCircle as ShelfSearchClearIcon, OcticonSearch as ShelfSearchIcon } from '@/components/Octicon';
 import { ROUTE_PATH, createReaderPath } from '@/router';
 import { getAllBooks } from '@/store/books';
 import type { BookInfo } from '@/store/books';
@@ -234,6 +234,10 @@ export const Shelf = (): React.JSX.Element => {
   const statusRevision = useReaderBookStatusRevision();
   const isSearchExpanded = Boolean(searchDraft);
   useBookSearchNativeNavigation(searchResultRef);
+  const clearShelfSearch = useCallback(() => {
+    searchState.clearSearch();
+    setSearchDraft('');
+  }, [searchState]);
   const visibleBooks = useMemo(() => {
     if (statusFilter === 'all') return books;
     return books.filter((book) => getReaderBookShelfStatus(book.id) === statusFilter);
@@ -252,6 +256,35 @@ export const Shelf = (): React.JSX.Element => {
                 onChange={(event) => setSearchDraft(event.currentTarget.value.trim())}
                 onInput={(event) => setSearchDraft(event.currentTarget.value.trim())}
               />
+              {searchDraft && (
+                <button
+                  aria-label="清除搜索"
+                  className="reader-search-clear-button"
+                  style={{
+                    position: 'absolute',
+                    right: 12,
+                    top: '50%',
+                    zIndex: 2,
+                    display: 'flex',
+                    width: 16,
+                    height: 16,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: 0,
+                    border: 0,
+                    borderRadius: 999,
+                    background: 'transparent',
+                    color: '#8c8c8e',
+                    cursor: 'pointer',
+                    transform: 'translateY(-50%)',
+                  }}
+                  type="button"
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={clearShelfSearch}
+                >
+                  <ShelfSearchClearIcon style={{ display: 'block', width: 16, height: 16 }} />
+                </button>
+              )}
             </div>
             <Link className="shelf-navbar-link" to={ROUTE_PATH.HOME}>
               首页

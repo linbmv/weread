@@ -96,10 +96,15 @@ export const BookCard = ({ book }: BookCardProps): React.JSX.Element => {
           )}
         </div>
       )}
-      <div
-        className={isMobile ? 'grow shrink basis-0 w-full overflow-hidden truncate' : 'grow shrink basis-0 min-w-36'}
-      >
-        <div className="text-text-color-1 font-medium truncate break-all" title={isMobile ? title : undefined}>
+      <div className={isMobile ? 'grow shrink basis-0 w-full overflow-hidden' : 'grow shrink basis-0 min-w-36'}>
+        <div
+          className={
+            isMobile
+              ? 'book-card-mobile-title text-text-color-1 font-medium break-all'
+              : 'text-text-color-1 font-medium truncate break-all'
+          }
+          title={isMobile ? title : undefined}
+        >
           {title}
         </div>
         <div

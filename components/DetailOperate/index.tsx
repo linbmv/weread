@@ -1,4 +1,5 @@
 ﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { CSSProperties } from 'react';
 import { BookDetailMenu } from '@/components/DetailMenu';
 import { EVENT_NAME, setReaderControlPanelActive, syncHook } from '@/lib/subscribe';
 import { OcticonFont, OcticonMenu, OcticonMoon, OcticonNote, OcticonReadingMode, OcticonSun } from '@/components/Octicon';
@@ -40,6 +41,10 @@ const MOBILE_CONTROL_BUTTONS: Array<{
 ];
 
 const READER_MOBILE_CONTROL_PANEL_FADE_DURATION = 180;
+
+const READER_MOBILE_PANEL_DRAG_HANDLE_HEIGHT = 58;
+
+const READER_MOBILE_PANEL_CLOSE_RATIO = 0.5;
 
 export const BookDetailOperate = (): React.JSX.Element => {
   const controlsRef = useRef<HTMLDivElement>(null);
@@ -278,11 +283,14 @@ export const MobileBookDetailOperate = (): React.JSX.Element => {
   const panelCloseTimerRef = useRef<number | null>(null);
   const panelMotionTimerRef = useRef<number | null>(null);
   const touchStartYRef = useRef<number | null>(null);
+  const touchDragEnabledRef = useRef(false);
   const [activePanel, setActivePanel] = useState<ReaderControlPanelType | null>(null);
   const [renderedPanel, setRenderedPanel] = useState<ReaderControlPanelType | null>(null);
   const [pendingPanel, setPendingPanel] = useState<ReaderControlPanelType | null>(null);
   const [panelMotion, setPanelMotion] = useState<ReaderControlPanelMotion>('enter');
   const [panelMotionId, setPanelMotionId] = useState(0);
+  const [panelDragY, setPanelDragY] = useState(0);
+  const [isDraggingPanel, setIsDraggingPanel] = useState(false);
 
   const clearPanelTimers = useCallback(() => {
     if (panelCloseTimerRef.current) {
@@ -298,6 +306,10 @@ export const MobileBookDetailOperate = (): React.JSX.Element => {
   const openPanelImmediately = useCallback(
     (panel: ReaderControlPanelType) => {
       clearPanelTimers();
+      touchStartYRef.current = null;
+      touchDragEnabledRef.current = false;
+      setPanelDragY(0);
+      setIsDraggingPanel(false);
       setPendingPanel(null);
       setRenderedPanel(panel);
       setActivePanel(panel);
@@ -310,6 +322,9 @@ export const MobileBookDetailOperate = (): React.JSX.Element => {
   const closePanel = useCallback(
     (nextPanel: ReaderControlPanelType | null = null, motion: ReaderControlPanelMotion = 'exit') => {
       clearPanelTimers();
+      touchStartYRef.current = null;
+      touchDragEnabledRef.current = false;
+      setIsDraggingPanel(false);
       setPendingPanel(nextPanel);
       setActivePanel(null);
       setPanelMotion(motion);
@@ -328,6 +343,7 @@ export const MobileBookDetailOperate = (): React.JSX.Element => {
         }
         setRenderedPanel(null);
         setPendingPanel(null);
+        setPanelDragY(0);
       }, closeDuration);
     },
     [clearPanelTimers],
@@ -426,17 +442,45 @@ export const MobileBookDetailOperate = (): React.JSX.Element => {
   }, [renderedPanel]);
 
   const onPanelTouchStart = (event: React.TouchEvent<HTMLDivElement>) => {
-    touchStartYRef.current = event.touches[0]?.clientY ?? null;
+    const clientY = event.touches[0]?.clientY;
+    if (clientY === undefined || (renderedPanel !== 'menu' && renderedPanel !== 'note')) {
+      touchStartYRef.current = null;
+      touchDragEnabledRef.current = false;
+      return;
+    }
+
+    const panelTop = event.currentTarget.getBoundingClientRect().top;
+    touchDragEnabledRef.current = clientY - panelTop <= READER_MOBILE_PANEL_DRAG_HANDLE_HEIGHT;
+    touchStartYRef.current = touchDragEnabledRef.current ? clientY : null;
+  };
+
+  const onPanelTouchMove = (event: React.TouchEvent<HTMLDivElement>) => {
+    const startY = touchStartYRef.current;
+    if (startY === null || !touchDragEnabledRef.current) return;
+    const currentY = event.touches[0]?.clientY ?? startY;
+    const nextDragY = Math.max(currentY - startY, 0);
+    if (nextDragY > 0) {
+      event.preventDefault();
+    }
+    setPanelDragY(nextDragY);
+    setIsDraggingPanel(true);
   };
 
   const onPanelTouchEnd = (event: React.TouchEvent<HTMLDivElement>) => {
     const startY = touchStartYRef.current;
     touchStartYRef.current = null;
+    touchDragEnabledRef.current = false;
+    setIsDraggingPanel(false);
     if (startY === null) return;
+
     const endY = event.changedTouches[0]?.clientY ?? startY;
-    if (endY - startY > 72) {
+    const dragY = Math.max(endY - startY, panelDragY, 0);
+    if (dragY >= window.innerHeight * READER_MOBILE_PANEL_CLOSE_RATIO) {
       closePanel();
+      return;
     }
+
+    setPanelDragY(0);
   };
 
   return (
@@ -463,11 +507,13 @@ export const MobileBookDetailOperate = (): React.JSX.Element => {
       {renderedPanel ? (
         <div className="reader-mobile-panel-layer">
           <div
-            className="reader-mobile-control-panel"
+            className={`reader-mobile-control-panel ${isDraggingPanel ? 'is-dragging' : ''}`}
             data-motion={panelMotion}
             data-motion-id={panelMotionId}
             data-reader-control-panel={renderedPanel}
+            style={{ '--reader-mobile-panel-drag-y': `${panelDragY}px` } as CSSProperties}
             onTouchEnd={onPanelTouchEnd}
+            onTouchMove={onPanelTouchMove}
             onTouchStart={onPanelTouchStart}
           >
             {panelContent}

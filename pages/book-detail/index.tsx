@@ -1645,15 +1645,16 @@ export const MobileBookDetail = (): React.JSX.Element => {
   }
 
   return (
-    <div className="reader-user-select-disabled" onContextMenu={preventReaderContextMenu}>
+    <div className="reader-mobile-paged-page reader-user-select-disabled" onContextMenu={preventReaderContextMenu}>
       <div
-        className="w-screen h-screen bg-front-bg-color-1"
+        className="reader-mobile-paged-viewport w-screen h-screen bg-front-bg-color-1"
         ref={ref}
         style={{
           viewTransitionName: `book-info-${id}`,
         }}
       >
-        <div className="w-full h-full p-8 relative">
+        <div className="reader-mobile-paged-shell w-full h-full p-8 relative">
+          <div className="reader-mobile-page-title-label">{getPageTitle(textSyntaxTree, pageNum)}</div>
           <div
             className="absolute top-0 left-0 transition-all w-full flex items-center justify-between px-4 bg-front-bg-color-3 overflow-hidden"
             style={{

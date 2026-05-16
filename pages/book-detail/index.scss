@@ -633,6 +633,37 @@
   pointer-events: auto;
 }
 
+.reader-mobile-paged-page,
+.reader-mobile-paged-viewport {
+  width: 100vw;
+  height: 100dvh;
+  overflow: hidden;
+}
+
+.reader-mobile-paged-shell {
+  box-sizing: border-box;
+  height: 100%;
+  overflow: hidden;
+  padding: 40px 22px 32px;
+  width: 100%;
+}
+
+.reader-mobile-page-title-label {
+  position: fixed;
+  top: max(10px, env(safe-area-inset-top));
+  left: max(14px, env(safe-area-inset-left));
+  z-index: 12;
+  max-width: calc(100vw - 72px);
+  color: var(--text-color-3);
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 18px;
+  overflow: hidden;
+  pointer-events: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .reader-mobile-scroll-page {
   width: 100vw;
   min-height: 100vh;

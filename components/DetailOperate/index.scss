@@ -216,6 +216,8 @@
 }
 
 .reader-mobile-control-panel {
+  --reader-mobile-panel-drag-y: 0px;
+
   position: relative;
   width: 100%;
   height: auto;
@@ -243,7 +245,7 @@
 .reader-mobile-control-panel[data-reader-control-panel='menu'] .reader-menu-panel::before {
   content: '';
   position: absolute;
-  top: 38px;
+  top: 24px;
   left: 50%;
   width: 48px;
   height: 5px;
@@ -267,7 +269,12 @@
 }
 
 .reader-mobile-control-panel[data-motion='idle'] {
-  transform: translate3d(0, 0, 0);
+  transform: translate3d(0, var(--reader-mobile-panel-drag-y), 0);
+  transition: transform 180ms ease;
+}
+
+.reader-mobile-control-panel.is-dragging {
+  transition: none;
 }
 
 @keyframes reader-mobile-control-panel-in {
@@ -282,7 +289,7 @@
 
 @keyframes reader-mobile-control-panel-out {
   from {
-    transform: translate3d(0, 0, 0);
+    transform: translate3d(0, var(--reader-mobile-panel-drag-y), 0);
   }
 
   to {
@@ -317,10 +324,31 @@
   height: 100% !important;
 }
 
+.reader-mobile-control-panel[data-reader-control-panel='note'] .reader-note-panel-wrapper {
+  position: relative;
+  padding-top: 58px;
+}
+
+.reader-mobile-control-panel[data-reader-control-panel='note'] .reader-note-panel-wrapper::before {
+  content: '';
+  position: absolute;
+  top: 24px;
+  left: 50%;
+  width: 48px;
+  height: 5px;
+  border-radius: 999px;
+  background: rgba(140, 140, 142, 0.72);
+  transform: translateX(-50%);
+}
+
 .reader-mobile-control-panel[data-reader-control-panel='setting'] .reader-setting-control-panel-wrapper,
 .reader-mobile-control-panel[data-reader-control-panel='font'] .reader-font-control-panel-wrapper,
 .reader-mobile-control-panel[data-reader-control-panel='note'] .reader-note-panel-wrapper {
   padding: 22px;
+}
+
+.reader-mobile-control-panel[data-reader-control-panel='note'] .reader-note-panel-wrapper {
+  padding: 58px 22px 22px;
 }
 
 .reader-mobile-control-panel[data-reader-control-panel='setting'] .reader-setting-control-panel-wrapper,
@@ -741,6 +769,10 @@
 .reader-font-access-button:disabled {
   cursor: not-allowed;
   opacity: 0.62;
+}
+
+.reader-font-local-input {
+  display: none;
 }
 
 .font-panel-content-size-wrapper {

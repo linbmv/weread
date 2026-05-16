@@ -37,6 +37,7 @@ import { Loading } from '@/components/Loading';
 import {
   OcticonChevronRight as HomeArrowRightIcon,
   OcticonPlus as HomePlusIcon,
+  OcticonXCircle as HomeSearchClearIcon,
   OcticonSearch as HomeSearchIcon,
 } from '@/components/Octicon';
 import { t } from '@/locales';
@@ -54,10 +55,10 @@ const DESKTOP_INPUT_STYLE = {
 const MOBILE_INPUT_STYLE = {
   '--ran-input-border-radius': '2rem',
   '--ran-input-content-border-radius': '2rem',
-  '--ran-input-content-padding': '10px 10px 10px 36px',
+  '--ran-input-content-padding': '10px 36px 10px 36px',
   '--ran-input-content-font-size': '16px',
   '--ran-input-content-font-weight': '400',
-  '--ran-input-padding': '0px 10px',
+  '--ran-input-padding': '0px',
 };
 
 const MAX_BOOK_LOAD_RETRIES = 3;
@@ -442,6 +443,7 @@ export const ImportConflictDialog = ({
 };
 
 export interface BookSearchState {
+  clearSearch: () => void;
   searchValue: string;
   searchLoading: boolean;
   searchTitleResult: BookInfo[];
@@ -867,7 +869,22 @@ export const useBookSearch = (inputRef: React.RefObject<HTMLInputElement | null>
     };
   }, [inputRef]);
 
-  return { searchValue, searchLoading, searchTitleResult, searchAuthorResult, searchContentResult };
+  const clearSearch = useCallback(() => {
+    requestIdRef.current += 1;
+    const target = inputRef.current;
+    if (target) {
+      target.value = '';
+      target.dispatchEvent(new Event('input', { bubbles: true }));
+      target.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+    setSearchValue('');
+    setSearchLoading(false);
+    setSearchTitleResult([]);
+    setSearchAuthorResult([]);
+    setSearchContentResult([]);
+  }, [inputRef]);
+
+  return { clearSearch, searchValue, searchLoading, searchTitleResult, searchAuthorResult, searchContentResult };
 };
 
 const renderHighlightedText = (text: string, keyword: string, bookId: string): React.ReactNode => {
@@ -967,7 +984,7 @@ export const SearchResultsPanel = ({
         {searchTitleResult.length > 0 && !searchLoading && (
           <div className={panelClassName}>
             <div>
-              <div className="text-text-color-2 text-base font-medium px-5 pb-1.5">{t('ebook')}</div>
+              <div className="text-text-color-2 text-base font-medium px-5 pt-2">{t('ebook')}</div>
               <div>
                 {searchTitleResult.map((book) => (
                   <SearchResultRow
@@ -985,7 +1002,7 @@ export const SearchResultsPanel = ({
         {searchAuthorResult.length > 0 && !searchLoading && (
           <div className={panelClassName}>
             <div>
-              <div className="text-text-color-2 text-base font-medium px-5 pb-1.5">{t('author')}</div>
+              <div className="text-text-color-2 text-base font-medium px-5 pt-2">{t('author')}</div>
               <div>
                 {searchAuthorResult.map((book) => (
                   <SearchResultRow
@@ -1003,7 +1020,7 @@ export const SearchResultsPanel = ({
         {searchContentResult.length > 0 && !searchLoading && (
           <div className={panelClassName}>
             <div>
-              <div className="text-text-color-2 text-base font-medium px-5 pb-1.5">
+              <div className="text-text-color-2 text-base font-medium px-5 pt-2">
                 {t('search_result_1')} <span className="text-blue-500">{searchValue}</span> {t('search_result_2')}
                 {t('search_result_3')}
                 {searchContentResult.length}
@@ -1128,7 +1145,7 @@ export const DesktopHome = (): React.JSX.Element => {
     <div>
       <div className="w-full bg-front-bg-color-2">
         <div className="w-full min-h-72 pt-28">
-          <div className="relative w-1/2 min-w-2xs h-14 block mx-auto">
+          <div className="home-search-field relative w-1/2 min-w-2xs h-14 block mx-auto">
             <HomeSearchIcon
               className="absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none z-10"
               style={{ width: 24, height: 24, color: 'var(--icon-color-1)' }}
@@ -1191,7 +1208,7 @@ export const MobileHome = (): React.JSX.Element => {
   return (
     <div className="w-full min-h-svh bg-front-bg-color-2">
       <div className="p-5">
-        <div className="relative w-full h-9 block mx-auto">
+        <div className="home-search-field relative w-full h-9 block mx-auto">
           <HomeSearchIcon
             className="absolute left-5 top-1/2 -translate-y-1/2 pointer-events-none z-10"
             style={{ width: 16, height: 16, color: 'var(--icon-color-1)' }}
@@ -1202,6 +1219,35 @@ export const MobileHome = (): React.JSX.Element => {
             placeholder={t('search')}
             ref={inputRef}
           ></r-input>
+          {searchState.searchValue && (
+            <button
+              aria-label="清除搜索"
+              className="reader-search-clear-button"
+              style={{
+                position: 'absolute',
+                right: 16,
+                top: '50%',
+                zIndex: 20,
+                display: 'flex',
+                width: 16,
+                height: 16,
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: 0,
+                border: 0,
+                borderRadius: 999,
+                background: 'transparent',
+                color: '#8c8c8e',
+                cursor: 'pointer',
+                transform: 'translateY(-50%)',
+              }}
+              type="button"
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={searchState.clearSearch}
+            >
+              <HomeSearchClearIcon style={{ display: 'block', width: 16, height: 16 }} />
+            </button>
+          )}
         </div>
       </div>
       {searchState.searchValue && (
