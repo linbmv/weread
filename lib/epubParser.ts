@@ -194,6 +194,21 @@ const throwIfAborted = (signal?: AbortSignal): void => {
   throw new Error('EPUB parse aborted.');
 };
 
+// Yield the main thread between expensive sanitize passes so a multi-megabyte
+// EPUB does not block input / paint for seconds at a time. Uses the Scheduler
+// API when available (Chrome 129+, smarter prioritisation) and falls back to
+// a postTask-shaped setTimeout(0) elsewhere.
+interface SchedulerYield {
+  yield: () => Promise<void>;
+}
+const yieldToMain = (): Promise<void> => {
+  const scheduler = (globalThis as { scheduler?: SchedulerYield }).scheduler;
+  if (scheduler && typeof scheduler.yield === 'function') {
+    return scheduler.yield();
+  }
+  return new Promise<void>((resolve) => setTimeout(resolve, 0));
+};
+
 const sanitizeElement = (element: Element, context: SanitizeContext): Node | undefined => {
   const tagName = element.tagName.toLowerCase();
   if (DANGEROUS_TAGS.has(tagName)) return undefined;
@@ -355,11 +370,19 @@ export const parseEpubToReaderDocument = async (
 
   const chapters: ReaderDocumentChapter[] = [];
 
-  spineItems.forEach((item, spineIndex) => {
-    if (spineIndex % 5 === 0) throwIfAborted(options.signal);
+  for (let spineIndex = 0; spineIndex < spineItems.length; spineIndex++) {
+    if (spineIndex % 3 === 0) {
+      throwIfAborted(options.signal);
+      // Yield every few chapters so the browser can paint loading UI and
+      // respond to user input. sanitizeBodyHtml is recursive over an entire
+      // chapter's DOM tree, so a 200-chapter book without yields could
+      // otherwise lock the main thread for >5 seconds.
+      if (spineIndex > 0) await yieldToMain();
+    }
+    const item = spineItems[spineIndex];
     const chapterPath = resolvePath(opfBase, item.href);
     const chapterBytes = files.get(chapterPath);
-    if (!chapterBytes) return;
+    if (!chapterBytes) continue;
     const parsed = parseXml(decodeXml(chapterBytes), 'text/html');
     files.delete(chapterPath);
     const body = parsed.body;
@@ -372,7 +395,7 @@ export const parseEpubToReaderDocument = async (
       getFallbackChapterTitle(chapterPath, chapters.length);
     const html = sanitizeBodyHtml(body, { resourceKeyByPath, chapterBase });
     const text = getChapterText(body);
-    if (!text && !html.includes('<img')) return;
+    if (!text && !html.includes('<img')) continue;
     chapters.push({
       html,
       // Stable id: based on spine index only, not the running chapter counter.
@@ -383,7 +406,7 @@ export const parseEpubToReaderDocument = async (
       text,
       title: bodyTitle,
     });
-  });
+  }
 
   throwIfAborted(options.signal);
   files.clear();

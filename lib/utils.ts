@@ -53,27 +53,20 @@ export const createRandomId = (prefix = 'id'): string => {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 };
 
-const fnv1aHex = (data: Uint8Array): string => {
-  let hash = 0x811c9dc5;
-  for (let i = 0; i < data.length; i++) {
-    hash ^= data[i];
-    hash = Math.imul(hash, 0x01000193);
-  }
-  const positive = hash >>> 0;
-  return `${positive.toString(16).padStart(8, '0')}${data.length.toString(16).padStart(8, '0')}`;
-};
-
 export const sha256Hex = async (value: string | Uint8Array<ArrayBuffer>): Promise<string> => {
   const subtle = canUseDOM() ? globalThis.crypto?.subtle : undefined;
-  const data: Uint8Array =
-    typeof value === 'string' ? new TextEncoder().encode(value) : value;
-
-  if (subtle) {
-    const buffer = await subtle.digest('SHA-256', data as Uint8Array<ArrayBuffer>);
-    return Array.from(new Uint8Array(buffer))
-      .map((byte) => byte.toString(16).padStart(2, '0'))
-      .join('');
+  if (!subtle) {
+    // Refuse to fall back to a weak 32-bit hash here: the result feeds book
+    // fingerprints / ids, and collisions silently overwrite different books.
+    // Web Crypto only requires a secure context (HTTPS or localhost), so
+    // exposing the failure surfaces it where it can be fixed.
+    throw new Error(
+      'SHA-256 unavailable: serve this app over HTTPS or from localhost so WebCrypto is enabled.',
+    );
   }
-
-  return fnv1aHex(data);
+  const data: Uint8Array = typeof value === 'string' ? new TextEncoder().encode(value) : value;
+  const buffer = await subtle.digest('SHA-256', data as Uint8Array<ArrayBuffer>);
+  return Array.from(new Uint8Array(buffer))
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join('');
 };

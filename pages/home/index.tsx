@@ -62,7 +62,17 @@ type ImportConflictAction = 'cancel' | 'keepBoth' | 'overwrite';
 
 const HOME_RECENT_BOOK_LIMIT = 6;
 
+// Module-scoped cache that survives Home unmount/remount during a single
+// session — keeping the book list on screen avoids a flash of empty shelf when
+// the user navigates back from the reader. The HMR hook below resets it on
+// hot reload so editing this file doesn't leave a stale snapshot around.
 let homeBookListCache: BookInfo[] | null = null;
+
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => {
+    homeBookListCache = null;
+  });
+}
 
 const writeHomeBookListCache = (books: BookInfo[]): void => {
   homeBookListCache = books;
@@ -815,8 +825,16 @@ export const useBookSearch = (inputRef: React.RefObject<HTMLInputElement | null>
     const target = inputRef.current;
     if (!target) return;
 
-    const onSearchInput = debounce((event: Event) => {
-      const value = trim((event.target as HTMLInputElement)?.value || '');
+    // Chinese / Japanese / Korean IMEs emit a stream of `input` events while
+    // the user is composing pinyin / kana — each candidate selection fires
+    // input even though the user has not committed any text yet. Searching
+    // on those would thrash the worker and pop confusing partial results.
+    // We swallow them while compositionstart/end is in progress and only
+    // run one final search when composition ends.
+    let composing = false;
+
+    const runSearch = (rawValue: string): void => {
+      const value = trim(rawValue);
       const requestId = requestIdRef.current + 1;
       requestIdRef.current = requestId;
       setSearchValue(value);
@@ -850,13 +868,35 @@ export const useBookSearch = (inputRef: React.RefObject<HTMLInputElement | null>
         }
         setSearchLoading(false);
       });
-    }, 500);
+    };
+
+    const debouncedRunSearch = debounce(runSearch, 500);
+
+    const onSearchInput = (event: Event): void => {
+      if (composing) return;
+      const rawValue = (event.target as HTMLInputElement)?.value || '';
+      debouncedRunSearch(rawValue);
+    };
+
+    const onCompositionStart = (): void => {
+      composing = true;
+    };
+
+    const onCompositionEnd = (event: Event): void => {
+      composing = false;
+      const rawValue = (event.target as HTMLInputElement)?.value || '';
+      debouncedRunSearch(rawValue);
+    };
 
     target.addEventListener('input', onSearchInput);
     target.addEventListener('change', onSearchInput);
+    target.addEventListener('compositionstart', onCompositionStart);
+    target.addEventListener('compositionend', onCompositionEnd);
     return () => {
       target.removeEventListener('input', onSearchInput);
       target.removeEventListener('change', onSearchInput);
+      target.removeEventListener('compositionstart', onCompositionStart);
+      target.removeEventListener('compositionend', onCompositionEnd);
     };
   }, [inputRef]);
 

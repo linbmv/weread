@@ -53,9 +53,20 @@ const normalizePath = (value: string): string => {
   return parts.join('/');
 };
 
+// ZIP spec hard limits. 0xffff is the maximum entry count for ZIP v2 (without
+// ZIP64); anything beyond that is either truncated or malicious.
+const MAX_ZIP_ENTRIES = 0xffff;
+const EOCD_SIGNATURE_SIZE = 22;
+const CENTRAL_DIRECTORY_HEADER_FIXED_SIZE = 46;
+const LOCAL_FILE_HEADER_FIXED_SIZE = 30;
+
 const findEocd = (view: DataView): number => {
-  const minOffset = Math.max(0, view.byteLength - 0xffff - 22);
-  for (let offset = view.byteLength - 22; offset >= minOffset; offset--) {
+  // Guard against tiny / truncated inputs before we start scanning backwards.
+  if (view.byteLength < EOCD_SIGNATURE_SIZE) {
+    throw new Error('Invalid EPUB: file is too small to contain a ZIP directory.');
+  }
+  const minOffset = Math.max(0, view.byteLength - 0xffff - EOCD_SIGNATURE_SIZE);
+  for (let offset = view.byteLength - EOCD_SIGNATURE_SIZE; offset >= minOffset; offset--) {
     if (getUint32(view, offset) === 0x06054b50) return offset;
   }
   throw new Error('Invalid EPUB: ZIP central directory not found.');
@@ -66,10 +77,21 @@ const parseZipEntries = (bytes: Uint8Array): ZipEntry[] => {
   const eocdOffset = findEocd(view);
   const entryCount = getUint16(view, eocdOffset + 10);
   const centralDirectoryOffset = getUint32(view, eocdOffset + 16);
+
+  if (entryCount > MAX_ZIP_ENTRIES) {
+    throw new Error(`Invalid EPUB: entry count ${entryCount} exceeds ZIP limit.`);
+  }
+  if (centralDirectoryOffset >= view.byteLength) {
+    throw new Error('Invalid EPUB: central directory offset is out of range.');
+  }
+
   const entries: ZipEntry[] = [];
   let offset = centralDirectoryOffset;
 
   for (let i = 0; i < entryCount; i++) {
+    if (offset + CENTRAL_DIRECTORY_HEADER_FIXED_SIZE > view.byteLength) {
+      throw new Error('Invalid EPUB: truncated central directory entry.');
+    }
     if (getUint32(view, offset) !== 0x02014b50) {
       throw new Error('Invalid EPUB: ZIP entry header is corrupted.');
     }
@@ -80,21 +102,34 @@ const parseZipEntries = (bytes: Uint8Array): ZipEntry[] => {
     const extraLength = getUint16(view, offset + 30);
     const commentLength = getUint16(view, offset + 32);
     const localHeaderOffset = getUint32(view, offset + 42);
-    const name = decoder.decode(bytes.subarray(offset + 46, offset + 46 + fileNameLength));
 
+    const nameStart = offset + CENTRAL_DIRECTORY_HEADER_FIXED_SIZE;
+    const nameEnd = nameStart + fileNameLength;
+    if (nameEnd > view.byteLength) {
+      throw new Error('Invalid EPUB: file name extends past end of archive.');
+    }
+    const name = decoder.decode(bytes.subarray(nameStart, nameEnd));
+
+    if (localHeaderOffset + LOCAL_FILE_HEADER_FIXED_SIZE > view.byteLength) {
+      throw new Error(`Invalid EPUB: local header offset out of range for ${name}.`);
+    }
     if (getUint32(view, localHeaderOffset) !== 0x04034b50) {
       throw new Error(`Invalid EPUB: local header not found for ${name}.`);
     }
     const localFileNameLength = getUint16(view, localHeaderOffset + 26);
     const localExtraLength = getUint16(view, localHeaderOffset + 28);
+    const dataOffset = localHeaderOffset + LOCAL_FILE_HEADER_FIXED_SIZE + localFileNameLength + localExtraLength;
+    if (dataOffset + compressedSize > view.byteLength) {
+      throw new Error(`Invalid EPUB: compressed data for ${name} extends past end of archive.`);
+    }
     entries.push({
       compressedSize,
       compressionMethod,
-      dataOffset: localHeaderOffset + 30 + localFileNameLength + localExtraLength,
+      dataOffset,
       name: normalizePath(name),
       uncompressedSize,
     });
-    offset += 46 + fileNameLength + extraLength + commentLength;
+    offset += CENTRAL_DIRECTORY_HEADER_FIXED_SIZE + fileNameLength + extraLength + commentLength;
   }
   return entries;
 };
@@ -104,14 +139,14 @@ const inflateWith = async (bytes: Uint8Array, format: 'deflate' | 'deflate-raw')
   // intermediate Blob copy that the previous `new Blob([bytes]).stream()`
   // implementation performed, which mattered for large EPUBs with many
   // entries.
-  // eslint-disable-next-line n/no-unsupported-features/node-builtins
+   
   const source = new ReadableStream({
     start(controller) {
       controller.enqueue(bytes);
       controller.close();
     },
   });
-  // eslint-disable-next-line n/no-unsupported-features/node-builtins
+   
   const stream = source.pipeThrough(new DecompressionStream(format));
   return new Uint8Array(await new Response(stream).arrayBuffer());
 };

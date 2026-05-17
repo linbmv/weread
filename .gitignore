@@ -23,3 +23,5 @@ dist
 report
 # tesseract
 *.traineddata
+# vibe coding
+.claude/

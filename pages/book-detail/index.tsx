@@ -1,8 +1,17 @@
 import { type CSSProperties, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { type NavigateFunction, useNavigate, useParams } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { debounce } from 'ranuts/utils';
-import { getBookById } from '@/store/books';
+import {
+  MOBILE_ICON_STYLE,
+  ReaderPageNextIcon,
+  ReaderPagePreviousIcon,
+  hasArrayChanged,
+  hasRecordChanged,
+  loadBookDetailById,
+  runPageTurn,
+  useReaderBookId,
+} from './helpers';
 import type { BookInfo } from '@/store/books';
 import type { ReaderBlock, TextSyntaxTree } from '@/lib/transformText';
 import { ROUTE_PATH } from '@/router';
@@ -17,18 +26,15 @@ import {
   getReaderNavigationTarget,
   getReaderSearchHighlight,
   getTextSyntaxTree,
-  setCurrentBookDetail,
   setPageNum,
   setReaderNavigationTarget,
   setTextSyntaxTree,
   syncHook,
 } from '@/lib/subscribe';
 import type { ReaderNavigationTarget } from '@/lib/subscribe';
-import { resumeDB } from '@/store';
 import { DEVICE_ENUM, useCheckDevice } from '@/lib/hooks';
 import { useSyncHookEvents } from '@/lib/useSyncHookEvents';
 import { Loading } from '@/components/Loading';
-import { OcticonChevronLeft, OcticonChevronRight } from '@/components/Octicon';
 import { t } from '@/locales';
 import {
   DEFAULT_READER_PAGE_TURN_EFFECT,
@@ -86,7 +92,6 @@ import {
   getPagedSpreadStartPage,
   getVisiblePageCount,
 } from '@/lib/reader/readerLayout';
-import { getCachedTextSyntaxTree } from '@/lib/reader/textSyntaxTreeCache';
 import { createPageBookmarkDraft, resolveRenderedBookmarkPage } from '@/lib/reader/bookmarkLocation';
 import { preventReaderContextMenu } from '@/lib/reader/selectionUtils';
 import { useReaderAnnotationsForBook } from '@/lib/reader/useReaderAnnotationsForBook';
@@ -108,28 +113,7 @@ const BOOK_DETAIL_UI_EVENTS = [
   EVENT_NAME.SET_TEXT_SYNTAX_TREE,
 ] as const;
 
-const MOBILE_BOOK_DETAIL_UI_EVENTS = [
-  EVENT_NAME.SET_CURRENT_BOOK_DETAIL,
-  EVENT_NAME.SET_READER_NAVIGATION_TARGET,
-  EVENT_NAME.SET_READER_SEARCH_HIGHLIGHT,
-  EVENT_NAME.SET_TEXT_SYNTAX_TREE,
-] as const;
-
 const BOOK_DETAIL_PAGE_EVENTS = [EVENT_NAME.SET_CURRENT_BOOK_PAGE] as const;
-
-const MOBILE_ICON_STYLE = {
-  '--ran-icon-font-size': '36px',
-  '--ran-icon-color': 'var(--icon-color-1)',
-};
-
-const useReaderBookId = (): string | undefined => {
-  const { bookId } = useParams<{ bookId: string }>();
-  return bookId;
-};
-
-const ReaderPagePreviousIcon = (): React.JSX.Element => <OcticonChevronLeft className="reader-page-nav-icon" />;
-
-const ReaderPageNextIcon = (): React.JSX.Element => <OcticonChevronRight className="reader-page-nav-icon" />;
 
 interface ReaderPagedContentProps {
   textSyntaxTree: TextSyntaxTree;
@@ -144,39 +128,6 @@ interface ReaderPagedContentProps {
   onTouchEnd?: (e: React.TouchEvent<HTMLDivElement>) => void;
   onTouchStart?: (e: React.TouchEvent<HTMLDivElement>) => void;
 }
-
-const hasRecordChanged = (prev: Record<string, number>, next: Record<string, number>): boolean => {
-  const prevKeys = Object.keys(prev);
-  const nextKeys = Object.keys(next);
-  if (prevKeys.length !== nextKeys.length) return true;
-  return nextKeys.some((key) => prev[key] !== next[key]);
-};
-
-const hasArrayChanged = (prev: number[], next: number[]): boolean => {
-  if (prev.length !== next.length) return true;
-  return next.some((value, index) => prev[index] !== value);
-};
-
-const runPageTurn = (effect: ReaderPageTurnEffect, update: () => void): void => {
-  if (typeof document === 'undefined') {
-    update();
-    return;
-  }
-
-  const viewTransitionDocument = document as Document & {
-    startViewTransition?: (callback: () => void) => { finished: Promise<void> };
-  };
-
-  if (effect !== 'fade' || !viewTransitionDocument.startViewTransition) {
-    update();
-    return;
-  }
-
-  const transition = viewTransitionDocument.startViewTransition(() => {
-    update();
-  });
-  void transition.finished.catch(() => undefined);
-};
 
 const ReaderPagedContent = ({
   textSyntaxTree,
@@ -266,7 +217,7 @@ const ReaderPagedContent = ({
       setCopyToastVisible(false);
       copyToastTimerRef.current = null;
     }, 1400);
-  }, [visiblePages]);
+  }, []);
 
   const handleCopySelection = useCallback(() => {
     const copyResult = copySelection();
@@ -1011,47 +962,6 @@ const next = (num: number = 1) => {
   });
 };
 
-const loadBookDetailById = (id: string | undefined, navigate: NavigateFunction): void => {
-  if (!id) return;
-  getBookById<BookInfo>(id)
-    .then((res) => {
-      if (res.error) {
-        resumeDB().then(() => {
-          loadBookDetailById(id, navigate);
-        });
-        return;
-      }
-
-      if (!res.data?.document) {
-        navigate(ROUTE_PATH.HOME, { replace: true });
-        return;
-      }
-
-      const currentBook = getCurrentBookDetail();
-      const nextTree = getCachedTextSyntaxTree(res.data);
-      const currentTree = getTextSyntaxTree();
-      const bookChanged =
-        currentBook?.id !== res.data.id ||
-        currentBook?.modifyTime !== res.data.modifyTime ||
-        currentBook?.fingerprint !== res.data.fingerprint;
-      const treeChanged =
-        currentTree.rawText !== nextTree.rawText ||
-        currentTree.blocks !== nextTree.blocks ||
-        currentTree.sequences !== nextTree.sequences;
-
-      if (bookChanged) {
-        setCurrentBookDetail(res.data);
-      }
-      if (treeChanged) {
-        setTextSyntaxTree(nextTree);
-      }
-    })
-    .catch((error) => {
-      console.log('error', error);
-      navigate(ROUTE_PATH.HOME, { replace: true });
-    });
-};
-
 export const BookDetail = (): React.JSX.Element => {
   const [currentDevice] = useCheckDevice();
   const bookId = useReaderBookId();
@@ -1505,7 +1415,7 @@ export const MobileBookDetail = (): React.JSX.Element => {
     }
   }, [id, navigate]);
 
-  useSyncHookEvents(MOBILE_BOOK_DETAIL_UI_EVENTS, updateUI);
+  useSyncHookEvents(BOOK_DETAIL_UI_EVENTS, updateUI);
   useSyncHookEvents(BOOK_DETAIL_PAGE_EVENTS, updatePageUI);
 
   useEffect(() => {

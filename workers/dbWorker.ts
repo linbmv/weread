@@ -233,33 +233,75 @@ const runSearch = async (
   };
 };
 
+// Writes/deletes report success only after the transaction has committed
+// (transaction.oncomplete), not when the individual request finishes. The
+// request's `onsuccess` fires inside the transaction but before commit; if the
+// tab is hidden / killed in between, the change is rolled back even though the
+// main thread already cached the book as persisted. Mobile browsers are
+// particularly aggressive about killing background tabs.
 const runWrite = (
+  transaction: IDBTransaction,
   store: IDBObjectStore,
   bookInfo: BookRecord,
   operationId: string,
   mode: 'add' | 'put',
 ): void => {
   const request = mode === 'add' ? store.add(bookInfo) : store.put(bookInfo);
+  let requestSucceeded = false;
   request.onsuccess = () => {
+    requestSucceeded = true;
+  };
+  request.onerror = () => {
+    postError(operationId, request.error?.message || `${mode} error`);
+  };
+  transaction.oncomplete = () => {
+    if (!requestSucceeded) return;
     if (isValidBook(bookInfo)) indexBookContent(bookInfo);
     // Echo back only metadata; the multi-megabyte document is already
     // persisted in IndexedDB and would otherwise cross the worker boundary
     // a second time for no reason.
     postSuccess(operationId, projectBookForList(bookInfo));
   };
-  request.onerror = () => {
-    postError(operationId, request.error?.message || `${mode} error`);
+  transaction.onabort = () => {
+    if (requestSucceeded) {
+      postError(operationId, transaction.error?.message || `${mode} transaction aborted`);
+    }
+  };
+  transaction.onerror = () => {
+    if (requestSucceeded) {
+      postError(operationId, transaction.error?.message || `${mode} transaction error`);
+    }
   };
 };
 
-const runDelete = (store: IDBObjectStore, key: string, operationId: string): void => {
+const runDelete = (
+  transaction: IDBTransaction,
+  store: IDBObjectStore,
+  key: string,
+  operationId: string,
+): void => {
   const request = store.delete(key);
+  let requestSucceeded = false;
   request.onsuccess = () => {
-    removeBookFromIndex(key);
-    postSuccess(operationId, null);
+    requestSucceeded = true;
   };
   request.onerror = () => {
     postError(operationId, request.error?.message || 'delete error');
+  };
+  transaction.oncomplete = () => {
+    if (!requestSucceeded) return;
+    removeBookFromIndex(key);
+    postSuccess(operationId, null);
+  };
+  transaction.onabort = () => {
+    if (requestSucceeded) {
+      postError(operationId, transaction.error?.message || 'delete transaction aborted');
+    }
+  };
+  transaction.onerror = () => {
+    if (requestSucceeded) {
+      postError(operationId, transaction.error?.message || 'delete transaction error');
+    }
   };
 };
 
@@ -287,6 +329,21 @@ const runGet = (store: IDBObjectStore, key: string, operationId: string): void =
 let cachedDB: IDBDatabase | null = null;
 let cachedDBPromise: Promise<IDBDatabase> | null = null;
 
+const disposeCachedDB = (): void => {
+  if (cachedDB) {
+    try {
+      cachedDB.close();
+    } catch {
+      // ignore — already closed
+    }
+    cachedDB = null;
+  }
+  // Force the in-worker content index to be rebuilt against the new schema.
+  contentIndex = undefined;
+  contentIndexedIds = new Set();
+  contentIndexBuilding = null;
+};
+
 const getDatabase = (dbName: string): Promise<IDBDatabase> => {
   if (cachedDB) return Promise.resolve(cachedDB);
   if (cachedDBPromise) return cachedDBPromise;
@@ -298,7 +355,19 @@ const getDatabase = (dbName: string): Promise<IDBDatabase> => {
       reject(request.error || new Error('Failed to open database'));
     };
     request.onsuccess = () => {
-      cachedDB = request.result;
+      const database = request.result;
+      // When the main thread upgrades the schema (new objectStore, new index,
+      // version bump), our cached connection becomes stale. If we keep using
+      // it, every subsequent transaction either fails with InvalidStateError
+      // or — worse — silently writes to the old schema. Drop the connection
+      // immediately on versionchange so the next operation reopens it.
+      database.onversionchange = () => {
+        disposeCachedDB();
+      };
+      database.onclose = () => {
+        if (cachedDB === database) disposeCachedDB();
+      };
+      cachedDB = database;
       cachedDBPromise = null;
       resolve(cachedDB);
     };
@@ -315,28 +384,52 @@ interface WorkerInboundMessage {
   operationId: string;
 }
 
+const openTransaction = async (
+  dbName: string,
+  storeName: string,
+  mode: IDBTransactionMode,
+): Promise<{ transaction: IDBTransaction; store: IDBObjectStore }> => {
+  // If the cached DB was closed (versionchange/onclose), the first attempt
+  // throws InvalidStateError. Dispose and retry once to transparently
+  // reconnect — without this, every operation after a schema upgrade fails.
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const database = await getDatabase(dbName);
+    try {
+      const transaction = database.transaction(storeName, mode);
+      const store = transaction.objectStore(storeName);
+      return { transaction, store };
+    } catch (error) {
+      if (attempt === 0) {
+        disposeCachedDB();
+        continue;
+      }
+      throw error;
+    }
+  }
+  throw new Error('Failed to open transaction');
+};
+
 self.onmessage = async (e: MessageEvent<WorkerInboundMessage>) => {
   const { type, data, dbName, storeName, operationId } = e.data;
   try {
-    const database = await getDatabase(dbName);
-    const transaction = database.transaction(
-      storeName,
-      type === 'add' || type === 'put' || type === 'delete' ? 'readwrite' : 'readonly',
-    );
-    const store = transaction.objectStore(storeName);
+    const mode: IDBTransactionMode =
+      type === 'add' || type === 'put' || type === 'delete' ? 'readwrite' : 'readonly';
+    const { transaction, store } = await openTransaction(dbName, storeName, mode);
 
     switch (type) {
-      case 'search':
+      case 'search': {
+        const database = await getDatabase(dbName);
         await runSearch(store, database, data as SearchPayload, operationId);
         break;
+      }
       case 'add':
-        runWrite(store, (data as { bookInfo: BookRecord }).bookInfo, operationId, 'add');
+        runWrite(transaction, store, (data as { bookInfo: BookRecord }).bookInfo, operationId, 'add');
         break;
       case 'put':
-        runWrite(store, (data as { bookInfo: BookRecord }).bookInfo, operationId, 'put');
+        runWrite(transaction, store, (data as { bookInfo: BookRecord }).bookInfo, operationId, 'put');
         break;
       case 'delete':
-        runDelete(store, (data as { key: string }).key, operationId);
+        runDelete(transaction, store, (data as { key: string }).key, operationId);
         break;
       case 'getAll':
         runGetAll(store, operationId);

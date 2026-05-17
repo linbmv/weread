@@ -13,6 +13,15 @@
 //   animation-duration: 0.5s;
 // }
 
+// `content-visibility: auto` lets the browser skip layout/paint for cards
+// that are off-screen. `contain-intrinsic-size` keeps the scrollbar honest
+// while those cards are skipped, so a large library scrolls smoothly without
+// needing a JS virtual-list dependency.
+.book-card-item {
+  content-visibility: auto;
+  contain-intrinsic-size: 160px 160px;
+}
+
 .book-cover-fallback {
   display: flex;
   align-items: center;

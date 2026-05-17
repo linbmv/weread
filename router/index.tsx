@@ -1,10 +1,14 @@
-import { useEffect } from 'react';
+import { Suspense, lazy, useEffect } from 'react';
 import { useNavigate, useRoutes } from 'react-router-dom';
 import type { ReactElement } from 'react';
 import { Loading } from '@/components/Loading/index';
-import { Home } from '@/pages/home/index';
-import { BookDetail } from '@/pages/book-detail/index';
-import { Shelf } from '@/pages/shelf/index';
+
+// Each route's bundle is fetched on demand. The reader page in particular
+// pulls in EPUB parsing, the worker glue, and large rendering modules, so
+// keeping it out of the initial chunk meaningfully cuts time-to-interactive.
+const Home = lazy(() => import('@/pages/home/index').then((m) => ({ default: m.Home })));
+const BookDetail = lazy(() => import('@/pages/book-detail/index').then((m) => ({ default: m.BookDetail })));
+const Shelf = lazy(() => import('@/pages/shelf/index').then((m) => ({ default: m.Shelf })));
 
 export enum ROUTE_PATH {
   HOME = '/',
@@ -24,19 +28,21 @@ const Redirect = ({ to, replace, state }: { replace?: boolean; state?: object; t
   return <Loading />;
 };
 
+const withSuspense = (element: ReactElement): ReactElement => <Suspense fallback={<Loading />}>{element}</Suspense>;
+
 export const Routes = (): ReactElement | null => {
   const defaultRoute = [
     {
       path: ROUTE_PATH.HOME,
-      element: <Home />,
+      element: withSuspense(<Home />),
     },
     {
       path: `${ROUTE_PATH.READER}/:bookId`,
-      element: <BookDetail />,
+      element: withSuspense(<BookDetail />),
     },
     {
       path: ROUTE_PATH.SHELF,
-      element: <Shelf />,
+      element: withSuspense(<Shelf />),
     },
     {
       path: ROUTE_PATH.LOADING,

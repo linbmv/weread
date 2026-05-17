@@ -80,7 +80,7 @@ export const BookCard = ({ book }: BookCardProps): React.JSX.Element => {
       onClick={onClick}
       href={href}
       style={{ viewTransitionName: `book-info-${id}` }}
-      className={isMobile ? MOBILE_CARD_CLASS : DESKTOP_CARD_CLASS}
+      className={`book-card-item ${isMobile ? MOBILE_CARD_CLASS : DESKTOP_CARD_CLASS}`}
     >
       {!isMobile && (
         <div className="grow-0">

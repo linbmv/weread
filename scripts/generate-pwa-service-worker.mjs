@@ -80,11 +80,23 @@ const getCachedAppShell = async () => {
 };
 
 const handleNavigationRequest = async (request) => {
+  // Only refresh the app-shell cache when the user navigates to the actual
+  // shell URL. SPA sub-routes (/reader/xxx, /shelf, ...) return their own
+  // server-rendered HTML — for static hosts that is index.html, but for hosts
+  // that map unknown paths to a 404 / branded error page we'd happily cache
+  // that error page under the scope root and serve it forever offline.
+  const scopeUrl = new URL(self.registration.scope);
+  const scopeRootHref = toScopeUrl('');
+  const shellHref = toScopeUrl(APP_SHELL_FILE);
+  const isAppShellRequest = request.url === scopeRootHref || request.url === shellHref ||
+    new URL(request.url).pathname === scopeUrl.pathname;
   try {
     const response = await fetch(request);
     if (response.ok) {
-      const cache = await caches.open(CACHE_NAME);
-      await cache.put(toScopeUrl(''), response.clone());
+      if (isAppShellRequest) {
+        const cache = await caches.open(CACHE_NAME);
+        await cache.put(scopeRootHref, response.clone());
+      }
       return response;
     }
 

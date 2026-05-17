@@ -15,15 +15,20 @@ const RESOURCE_STORE_NAME = 'resources';
 const RESOURCE_DB_VERSION = 1;
 
 // Cap the in-memory Blob URL cache so long reading sessions cannot leak
-// unbounded amounts of memory. URLs evicted here are revoked synchronously,
-// so any <img> still referencing them will fall back to a broken image, but
-// the resolver hook will create a fresh URL on the next render.
-const MAX_BLOB_URL_CACHE_SIZE = 64;
+// unbounded amounts of memory. Evicted URLs are NOT revoked immediately —
+// they're parked in `pendingRevoke` because the DOM may still reference them
+// (a virtualised list, an in-flight image decode, a transition animation).
+// Revocation happens lazily the next time we mint a URL, by which point the
+// referencing element has almost certainly been replaced and the browser has
+// finished any pending decode.
+const MAX_BLOB_URL_CACHE_SIZE = 256;
+const PENDING_REVOKE_BATCH_SIZE = 64;
 
 let resourceDB: IDBDatabase | null = null;
 let resourceDBPromise: Promise<IDBDatabase> | null = null;
 
 const blobUrlCache = new Map<string, string>();
+const pendingRevoke: string[] = [];
 
 const buildPrimaryKey = (bookId: string, resourceKey: string): string => `${bookId}\u0000${resourceKey}`;
 
@@ -164,10 +169,22 @@ export const getBookResourceUrl = async (bookId: string, resourceKey: string): P
 
   const record = await loadBookResource(bookId, resourceKey);
   if (!record) return undefined;
+  // Drain stale URLs queued by earlier evictions before we mint a new one.
+  // By now any DOM references to those URLs will have re-rendered through
+  // the resolver hook and acquired a fresh URL.
+  drainPendingRevocations();
   const url = URL.createObjectURL(record.blob);
   blobUrlCache.set(cacheKey, url);
   evictBlobUrlCacheIfNeeded();
   return url;
+};
+
+const drainPendingRevocations = (limit: number = PENDING_REVOKE_BATCH_SIZE): void => {
+  const count = Math.min(pendingRevoke.length, limit);
+  for (let i = 0; i < count; i++) {
+    const url = pendingRevoke.shift();
+    if (url) URL.revokeObjectURL(url);
+  }
 };
 
 const evictBlobUrlCacheIfNeeded = (): void => {
@@ -175,7 +192,7 @@ const evictBlobUrlCacheIfNeeded = (): void => {
     const oldestKey = blobUrlCache.keys().next();
     if (oldestKey.done) return;
     const url = blobUrlCache.get(oldestKey.value);
-    if (url) URL.revokeObjectURL(url);
+    if (url) pendingRevoke.push(url);
     blobUrlCache.delete(oldestKey.value);
   }
 };
@@ -184,8 +201,17 @@ export const releaseBookResourceUrls = (bookId?: string): void => {
   const prefix = bookId ? `${bookId}\u0000` : undefined;
   for (const [key, url] of blobUrlCache) {
     if (!prefix || key.startsWith(prefix)) {
+      // Releases are explicit (book deleted / navigated away) — safe to
+      // revoke immediately; nothing should still be rendering this book.
       URL.revokeObjectURL(url);
       blobUrlCache.delete(key);
+    }
+  }
+  if (!prefix) {
+    // Drain everything pending too when releasing the whole cache.
+    while (pendingRevoke.length > 0) {
+      const url = pendingRevoke.shift();
+      if (url) URL.revokeObjectURL(url);
     }
   }
 };

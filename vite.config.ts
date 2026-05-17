@@ -19,6 +19,26 @@ export default defineConfig({
   plugins: [react()],
   build: {
     target: 'esnext',
+    // Split vendor code into stable chunks so user code changes do not bust
+    // the long-cached library bundles. Keep heavy / optional libs (flexsearch,
+    // jschardet, lit) in their own chunks so they download lazily with the
+    // routes that need them.
+    rollupOptions: {
+      output: {
+        manualChunks(id: string): string | undefined {
+          if (!id.includes('node_modules')) return undefined;
+          if (id.includes('react-router')) return 'vendor-router';
+          if (id.includes('/react-dom/') || id.includes('\\react-dom\\')) return 'vendor-react';
+          if (id.includes('/react/') || id.includes('\\react\\')) return 'vendor-react';
+          if (id.includes('scheduler')) return 'vendor-react';
+          if (id.includes('flexsearch')) return 'vendor-flexsearch';
+          if (id.includes('jschardet')) return 'vendor-jschardet';
+          if (id.includes('lit') || id.includes('@khmyznikov/pwa-install')) return 'vendor-pwa';
+          if (id.includes('ranui') || id.includes('ranuts')) return 'vendor-ranui';
+          return 'vendor';
+        },
+      },
+    },
   },
   publicDir: 'public',
   resolve: {
