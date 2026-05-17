@@ -21,6 +21,7 @@ import { useReaderSelectionOverlay } from '@/lib/reader/useReaderSelectionOverla
 import { useReaderAnnotationActions } from '@/lib/reader/useReaderAnnotationActions';
 import { renderReaderBlock } from '@/components/Reader/ReaderBlock';
 import { ReaderCopyToast, ReaderNoteModal, ReaderSelectionMenu } from '@/components/Reader/ReaderSelectionMenu';
+import { t } from '@/locales';
 
 export interface ReaderScrollContentProps {
   textSyntaxTree: TextSyntaxTree;
@@ -406,7 +407,7 @@ export const ReaderScrollContent = ({
           type="button"
           onClick={() => onNavigateTitle(previousTitleId)}
         >
-          上一章
+          {t('reader.previous_chapter')}
         </button>
       )}
       {renderedBlocks}
@@ -416,7 +417,7 @@ export const ReaderScrollContent = ({
           type="button"
           onClick={() => onNavigateTitle(nextTitleId)}
         >
-          下一章
+          {t('reader.next_chapter')}
         </button>
       )}
     </article>

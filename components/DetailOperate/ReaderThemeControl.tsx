@@ -3,6 +3,7 @@ import { EVENT_NAME, syncHook } from '@/lib/subscribe';
 import { type ReaderTheme, applyReaderTheme, getStoredReaderTheme, saveReaderTheme } from '@/lib/readerSettings';
 import { OcticonMoon, OcticonSun } from '@/components/Octicon';
 import { ReaderControlTooltip } from '@/components/DetailOperate/ReaderControlTooltip';
+import { t } from '@/locales';
 
 const ReaderSunIcon = (): React.JSX.Element => <OcticonSun />;
 
@@ -36,14 +37,14 @@ export const ReaderThemeControl = (): React.JSX.Element => {
   return (
     <div className="reader-tooltip-container reader-control-tooltip-container">
       <button
-        aria-label={theme === 'dark' ? '浅色' : '深色'}
+        aria-label={theme === 'dark' ? t('reader.light') : t('reader.dark')}
         className="reader-control-button reader-theme-control"
         type="button"
         onClick={toggleTheme}
       >
         {theme === 'dark' ? <ReaderSunIcon /> : <ReaderMoonIcon />}
       </button>
-      <ReaderControlTooltip label={theme === 'dark' ? '浅色' : '深色'} />
+      <ReaderControlTooltip label={theme === 'dark' ? t('reader.light') : t('reader.dark')} />
     </div>
   );
 };

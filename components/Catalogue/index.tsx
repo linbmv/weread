@@ -11,6 +11,7 @@ import { OcticonClock, OcticonSortAsc } from '@/components/Octicon';
 import { BookDataPanel } from '@/components/Catalogue/BookDataPanel';
 import { BookSummaryButton } from '@/components/Catalogue/BookSummaryButton';
 import { CatalogueProgressIcon } from '@/components/Catalogue/CatalogueProgressIcon';
+import { t } from '@/locales';
 import {
   formatReadingDuration,
   getCatalogueReadPercent,
@@ -190,7 +191,7 @@ export const Catalogue = (): React.JSX.Element => {
                     {showProgress ? (
                       <div className="readerCatalog_list_item_meta_progress">
                         <CatalogueProgressIcon />
-                        <div>{`当前读到 ${currentReadPercent}%`}</div>
+                        <div>{t('catalogue.current_read_to', [currentReadPercent])}</div>
                       </div>
                     ) : null}
                     {showBookmarkAction ? (
@@ -201,11 +202,11 @@ export const Catalogue = (): React.JSX.Element => {
                         onClick={addCurrentPageBookmark}
                       >
                         {isBookmarked ? (
-                          <span>已添加书签</span>
+                          <span>{t('catalogue.bookmark_added')}</span>
                         ) : (
                           <>
                             <span className="readerCatalog_list_item_meta_add_bookMark_plus">+</span>
-                            <span>书签</span>
+                            <span>{t('catalogue.bookmark')}</span>
                           </>
                         )}
                       </button>
@@ -219,7 +220,7 @@ export const Catalogue = (): React.JSX.Element => {
       </div>
       <button className="readerCatalog_mobile_scroll_button" type="button" onClick={toSort}>
         <CatalogueMobileScrollIcon direction={sortDirection} />
-        <span>{sortDirection === SORT_DIRECTION.DOWN ? '去底部' : '去顶部'}</span>
+        <span>{sortDirection === SORT_DIRECTION.DOWN ? t('catalogue.go_bottom') : t('catalogue.go_top')}</span>
       </button>
       <BookDataPanel
         bookDetail={bookDetail}

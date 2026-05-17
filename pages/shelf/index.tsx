@@ -33,18 +33,19 @@ import {
   setTextSyntaxTree,
 } from '@/lib/subscribe';
 import { createEmptyTextSyntaxTree } from '@/lib/transformText';
+import { t } from '@/locales';
 import './index.scss';
 
 const MAX_SHELF_BOOK_LOAD_RETRIES = 3;
 
 type ShelfStatusFilterValue = 'all' | ReaderBookShelfStatus;
 
-const SHELF_STATUS_FILTER_OPTIONS: Array<{ id: ShelfStatusFilterValue; label: string }> = [
-  { id: 'all', label: '全部' },
-  { id: 'unread', label: '未读' },
-  { id: 'reading', label: '在读' },
-  { id: 'read', label: '读过' },
-  { id: 'finished', label: '读完' },
+const SHELF_STATUS_FILTER_OPTIONS: Array<{ id: ShelfStatusFilterValue; labelKey: string }> = [
+  { id: 'all', labelKey: 'shelf.all' },
+  { id: 'unread', labelKey: 'shelf.unread' },
+  { id: 'reading', labelKey: 'shelf.reading' },
+  { id: 'read', labelKey: 'shelf.read' },
+  { id: 'finished', labelKey: 'shelf.finished' },
 ];
 
 const ShelfFilterIcon = (): React.JSX.Element => (
@@ -134,7 +135,7 @@ const ShelfStatusFilter = ({
 }): React.JSX.Element => {
   const [isExpanded, setIsExpanded] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
-  const currentLabel = SHELF_STATUS_FILTER_OPTIONS.find((option) => option.id === value)?.label || '';
+  const currentLabel = SHELF_STATUS_FILTER_OPTIONS.find((option) => option.id === value)?.labelKey || '';
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent): void => {
@@ -160,7 +161,7 @@ const ShelfStatusFilter = ({
               setIsExpanded(false);
             }}
           >
-            {option.label}
+            {t(option.labelKey)}
           </button>
         ))}
       </div>
@@ -171,7 +172,7 @@ const ShelfStatusFilter = ({
         type="button"
         onClick={() => setIsExpanded(true)}
       >
-        <span>{currentLabel}</span>
+        <span>{t(currentLabel)}</span>
         <ShelfFilterIcon />
       </button>
     </div>
@@ -252,13 +253,13 @@ export const Shelf = (): React.JSX.Element => {
               <ShelfSearchIcon className="shelf-search-icon" />
               <input
                 ref={inputRef}
-                placeholder="搜索"
+                placeholder={t('search')}
                 onChange={(event) => setSearchDraft(event.currentTarget.value.trim())}
                 onInput={(event) => setSearchDraft(event.currentTarget.value.trim())}
               />
               {searchDraft && (
                 <button
-                  aria-label="清除搜索"
+                  aria-label={t('search.clear')}
                   className="reader-search-clear-button"
                   style={{
                     position: 'absolute',
@@ -287,7 +288,7 @@ export const Shelf = (): React.JSX.Element => {
               )}
             </div>
             <Link className="shelf-navbar-link" to={ROUTE_PATH.HOME}>
-              首页
+              {t('home')}
             </Link>
           </div>
         </div>
@@ -303,7 +304,7 @@ export const Shelf = (): React.JSX.Element => {
 
       <main className="shelf-main">
         <div className="shelf-page-header">
-          <h1>我的书架</h1>
+          <h1>{t('my_bookcase')}</h1>
           <ShelfStatusFilter value={statusFilter} onChange={setStatusFilter} />
         </div>
         {loading ? (

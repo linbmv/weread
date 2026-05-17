@@ -11,6 +11,7 @@ import { restoreReaderProgressForBook } from '@/lib/readerProgress';
 import { restoreReaderReadingTimeForBook } from '@/lib/readerReadingTime';
 import { restoreReaderSettings } from '@/lib/readerSettingStore';
 import { bootstrapReaderSettings, emitReaderSettingChange } from '@/lib/readerSettings';
+import { t } from '@/locales';
 import type {
   BackupBookPayload,
   BackupManifest,
@@ -31,7 +32,7 @@ const readJsonEntry = <T>(entries: Map<string, { data: Uint8Array }>, path: stri
   const entry = entries.get(path);
   if (!entry) {
     if (fallback !== undefined) return fallback;
-    throw new Error(`BDZ 缺少 ${path}`);
+    throw new Error(t('backup.missing_path', [path]));
   }
   return JSON.parse(decoder.decode(entry.data)) as T;
 };
@@ -44,10 +45,10 @@ export const parseBackupFile = async (file: File): Promise<ParsedBackupArchive> 
   const entries = await readBackupZip(file);
   const manifest = readJsonEntry<BackupManifest>(entries, 'manifest.json');
   if (manifest.appName !== 'weread' || manifest.backupSchemaVersion !== BACKUP_SCHEMA_VERSION) {
-    throw new Error('不支持的 BDZ 备份版本');
+    throw new Error(t('backup.unsupported_version'));
   }
   const manifestBook = manifest.books[0];
-  if (!manifestBook?.id) throw new Error('BDZ 备份缺少书籍信息');
+  if (!manifestBook?.id) throw new Error(t('backup.missing_book_info'));
 
   const book = readJsonEntry<BackupBookPayload>(entries, `books/${manifestBook.id}/book.json`);
   const userData: BackupUserDataPayload = {
@@ -65,7 +66,7 @@ export const parseBackupFile = async (file: File): Promise<ParsedBackupArchive> 
   );
   const resources = resourceManifest.map((resource) => {
     const entry = entries.get(resource.path);
-    if (!entry) throw new Error(`BDZ 缺少资源 ${resource.resourceKey}`);
+    if (!entry) throw new Error(t('backup.missing_resource', [resource.resourceKey]));
     return {
       ...resource,
       blob: new Blob([entry.data as BlobPart], { type: resource.mediaType }),
@@ -84,7 +85,7 @@ export const isFullBackupArchive = (archive: ParsedBackupArchive): boolean => {
 };
 
 export const createImportedBookDataFromBackup = (archive: ParsedBackupArchive): ImportedBookData => {
-  if (!archive.book.document) throw new Error('该 BDZ 只包含用户数据，缺少书籍本体');
+  if (!archive.book.document) throw new Error(t('backup.user_data_only'));
   return {
     author: archive.book.author || '',
     document: archive.book.document,
@@ -92,7 +93,7 @@ export const createImportedBookDataFromBackup = (archive: ParsedBackupArchive): 
     image: archive.book.image || '',
     resources: toBookResourceRecords(archive.book.id, archive.resources),
     sourceType: archive.book.sourceType,
-    title: archive.book.title || '未命名书籍',
+    title: archive.book.title || t('common.unnamed_book'),
   };
 };
 

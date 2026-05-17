@@ -1,5 +1,6 @@
 import type { BookInfo } from '@/store/books';
 import { BookCoverFallback } from '@/components/BookCard';
+import { t } from '@/locales';
 
 interface BookSummaryButtonProps {
   bookDetail: BookInfo | null;
@@ -18,7 +19,7 @@ export const BookSummaryButton = ({
 }: BookSummaryButtonProps): React.JSX.Element => {
   return (
     <button
-      aria-label="打开书籍数据"
+      aria-label={t('catalogue.open_book_data')}
       className="reader-catalog-book-summary px-7 py-2 flex flex-row flex-nowrap items-center shrink-0"
       type="button"
       onClick={onClick}

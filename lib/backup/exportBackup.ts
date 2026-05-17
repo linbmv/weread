@@ -7,6 +7,7 @@ import { getReaderAnnotations } from '@/lib/readerAnnotations';
 import { getReaderBookStatusRecord } from '@/lib/readerBookStatus';
 import { getReaderProgress } from '@/lib/readerProgress';
 import { getReaderReadingTimeRecordsForBook, getReaderReadingTimeSummary } from '@/lib/readerReadingTime';
+import { t } from '@/locales';
 import type {
   BackupBookPayload,
   BackupExportKind,
@@ -32,7 +33,7 @@ const formatExportTime = (timestamp: number): string => {
 
 const sanitizeFileName = (value: string): string => {
   const invalidChars = new Set(['<', '>', ':', '"', '/', '\\', '|', '?', '*']);
-  return Array.from(value.trim() || '未命名书籍')
+  return Array.from(value.trim() || t('common.unnamed_book'))
     .map((char) => (invalidChars.has(char) || char.charCodeAt(0) < 32 ? '_' : char))
     .join('')
     .slice(0, 80);
@@ -56,7 +57,7 @@ const createBookPayload = (book: BookInfo, includeBook: boolean): BackupBookPayl
   image: book.image || '',
   modifyTime: book.modifyTime,
   sourceType: book.sourceType,
-  title: book.title || '未命名书籍',
+  title: book.title || t('common.unnamed_book'),
 });
 
 export const createSingleBookBackup = async ({
@@ -68,7 +69,7 @@ export const createSingleBookBackup = async ({
 }): Promise<{ blob: Blob; fileName: string }> => {
   const result = await getBookById<BookInfo>(bookId);
   if (result.error || !result.data) {
-    throw new Error('书籍不存在，无法导出');
+    throw new Error(t('backup.book_not_found'));
   }
 
   const book = result.data;
@@ -95,7 +96,7 @@ export const createSingleBookBackup = async ({
         readingTimeMs: readingTimeSummary.totalMs,
         readingStatus: bookStatus?.status,
         sourceType: book.sourceType,
-        title: book.title || '未命名书籍',
+        title: book.title || t('common.unnamed_book'),
       },
     ],
     createdAt,

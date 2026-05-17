@@ -48,7 +48,7 @@ export const DEFAULT_READER_FONT_FAMILY =
 
 export const DEFAULT_READER_FONT: ReaderFontSetting = {
   id: 'default',
-  label: '默认字体',
+  label: 'Default',
   family: DEFAULT_READER_FONT_FAMILY,
   source: 'default',
 };

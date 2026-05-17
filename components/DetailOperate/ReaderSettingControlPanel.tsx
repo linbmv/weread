@@ -23,21 +23,22 @@ import {
   saveReaderScrollPaddingX,
 } from '@/lib/readerSettings';
 import { EVENT_NAME, syncHook } from '@/lib/subscribe';
+import { t } from '@/locales';
 
 const PAGE_TURN_EFFECT_OPTIONS: { key: ReaderPageTurnEffect; label: string }[] = [
-  { key: 'jump', label: '无' },
-  { key: 'fade', label: '渐隐' },
-  { key: 'scroll', label: '滚动' },
+  { key: 'jump', label: 'settings.page_turn.none' },
+  { key: 'fade', label: 'settings.page_turn.fade' },
+  { key: 'scroll', label: 'settings.page_turn.scroll' },
 ];
 
 const READING_MODE_OPTIONS: { key: ReaderReadingMode; label: string }[] = [
-  { key: 'paged', label: '双栏阅读' },
-  { key: 'scroll', label: '上下滚动阅读' },
+  { key: 'paged', label: 'settings.mode.paged' },
+  { key: 'scroll', label: 'settings.mode.scroll' },
 ];
 
 const FIRST_LINE_INDENT_OPTIONS: { key: ReaderFirstLineIndent; label: string }[] = [
-  { key: 'none', label: '首行顶格' },
-  { key: 'indent', label: '首行缩进' },
+  { key: 'none', label: 'settings.indent.none' },
+  { key: 'indent', label: 'settings.indent.indent' },
 ];
 
 const FONT_SIZE_SLIDER_THUMB_SIZE = 26;
@@ -66,7 +67,7 @@ const ReaderSpacingControl = ({ readingMode }: ReaderSpacingControlProps): React
   const max = isPaged ? MAX_READER_PAGE_GAP_RATIO : MAX_READER_SCROLL_PADDING_X;
   const defaultValue = isPaged ? DEFAULT_READER_PAGE_GAP_RATIO : DEFAULT_READER_SCROLL_PADDING_X;
   const value = isPaged ? pageGapRatio : scrollPaddingX;
-  const title = isPaged ? '页间距' : '内边距';
+  const title = isPaged ? t('settings.page_gap') : t('settings.padding');
   const formatLabel = isPaged ? (v: number) => `${Math.round(v * 100)}%` : (v: number) => `${Math.round(v)}px`;
 
   const flushPendingApply = useCallback(() => {
@@ -326,7 +327,7 @@ export const ReaderSettingControlPanel = (): React.JSX.Element => {
   return (
     <div className="reader-setting-control-panel-wrapper">
       <div className="reader-setting-section">
-        <div className="reader-font-panel-title">阅读模式</div>
+        <div className="reader-font-panel-title">{t('settings.reading_mode')}</div>
         <div className="reader-reading-mode-options" ref={readingModeOptionRef}>
           {READING_MODE_OPTIONS.map((item) => (
             <button
@@ -335,14 +336,14 @@ export const ReaderSettingControlPanel = (): React.JSX.Element => {
               key={item.key}
               type="button"
             >
-              {item.label}
+              {t(item.label)}
             </button>
           ))}
         </div>
       </div>
 
       <div className="reader-setting-section">
-        <div className="reader-font-panel-title">首行缩进</div>
+        <div className="reader-font-panel-title">{t('settings.first_line_indent')}</div>
         <div className="reader-first-line-indent-options" ref={firstLineIndentOptionRef}>
           {FIRST_LINE_INDENT_OPTIONS.map((item) => (
             <button
@@ -351,14 +352,14 @@ export const ReaderSettingControlPanel = (): React.JSX.Element => {
               key={item.key}
               type="button"
             >
-              {item.label}
+              {t(item.label)}
             </button>
           ))}
         </div>
       </div>
 
       <div className="reader-setting-section">
-        <div className="reader-font-panel-title">翻页动画</div>
+        <div className="reader-font-panel-title">{t('settings.page_turn')}</div>
         <div className="reader-page-turn-options" ref={pageTurnOptionRef}>
           {PAGE_TURN_EFFECT_OPTIONS.map((item) => (
             <button
@@ -367,7 +368,7 @@ export const ReaderSettingControlPanel = (): React.JSX.Element => {
               key={item.key}
               type="button"
             >
-              {item.label}
+              {t(item.label)}
             </button>
           ))}
         </div>

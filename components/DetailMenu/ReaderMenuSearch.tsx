@@ -231,7 +231,7 @@ export const ReaderMenuSearch = ({ idleContent }: ReaderMenuSearchProps): React.
             onChange={onSearchInput}
           />
           {searchKeyword && (
-            <button aria-label="清除搜索" className="reader-menu-search-clear" type="button" onClick={clearSearch}>
+            <button aria-label={t('search.clear')} className="reader-menu-search-clear" type="button" onClick={clearSearch}>
               <OcticonXCircle />
             </button>
           )}

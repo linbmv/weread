@@ -3,6 +3,7 @@ import { useResolvedBookImage } from '@/lib/useResolvedBookImage';
 import type { ReaderAnnotation } from '@/lib/readerAnnotations';
 import type { ReaderBlock } from '@/lib/transformText';
 import { renderTextWithAnnotations } from '@/lib/reader/annotationRendering';
+import { t } from '@/locales';
 
 export const ReaderImageBlock = ({
   block,
@@ -66,7 +67,7 @@ export const ReaderImageBlock = ({
         />
       ) : (
         <div className="reader-content-image-fallback" data-reader-image-settled="true">
-          图片加载失败
+          {t('reader.image_load_failed')}
         </div>
       )}
     </figure>

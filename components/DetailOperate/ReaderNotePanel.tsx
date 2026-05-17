@@ -12,6 +12,7 @@ import {
 import { showGlobalFallback } from '@/lib/globalFallback';
 import { type ReaderAnnotation, getAnnotationBlock, getReaderAnnotations } from '@/lib/readerAnnotations';
 import { OcticonBookmark, OcticonMarker, OcticonUnderline, OcticonWave, OcticonWriteNote } from '@/components/Octicon';
+import { t } from '@/locales';
 
 const writePanelClipboardText = async (text: string): Promise<boolean> => {
   if (!text) return false;
@@ -111,7 +112,7 @@ export const ReaderNotePanel = (): React.JSX.Element => {
           const blockB = blockIndexMap.get(b.blockId) ?? 0;
           return blockA - blockB || a.startOffset - b.startOffset || a.createdAt - b.createdAt;
         }),
-        title: textSyntaxTree.titleIdTitle[titleId] || '正文',
+        title: textSyntaxTree.titleIdTitle[titleId] || t('notes.body'),
         titleId,
       }));
   }, [annotations, blockIndexMap, textSyntaxTree]);
@@ -121,11 +122,11 @@ export const ReaderNotePanel = (): React.JSX.Element => {
       const block = getAnnotationBlock(textSyntaxTree, annotation);
       const titleId = annotation.titleId ?? block?.titleId ?? 0;
       if (!block && typeof annotation.page !== 'number') {
-        showGlobalFallback({ message: '笔记定位失败，原文位置已失效', tone: 'error' });
+        showGlobalFallback({ message: t('notes.location_failed'), tone: 'error' });
         return;
       }
       if (!block) {
-        showGlobalFallback({ message: '笔记原文位置已变化，已按页码定位', tone: 'info' });
+        showGlobalFallback({ message: t('notes.location_changed'), tone: 'info' });
       }
       const page =
         typeof annotation.page === 'number' && Number.isFinite(annotation.page)
@@ -156,13 +157,13 @@ export const ReaderNotePanel = (): React.JSX.Element => {
 
   const copyAllNotes = useCallback(() => {
     if (annotations.length === 0) return;
-    const lines: string[] = [`《${bookDetail?.title || '未命名书籍'}》 ${annotations.length}个笔记`];
+    const lines: string[] = [t('notes.count', [bookDetail?.title || t('common.unnamed_book'), annotations.length])];
     groups.forEach((group) => {
       lines.push(group.title);
       group.items.forEach((annotation) => {
         if (annotation.type === 'note' && annotation.noteText) {
           lines.push(
-            `◆ ${formatReaderNoteCopyDate(annotation.createdAt)}发表想法 ${annotation.noteText} 原文：${annotation.text}`,
+            `◆ ${formatReaderNoteCopyDate(annotation.createdAt)}${t('notes.published_thought')} ${annotation.noteText} ${t('notes.original_text')}${annotation.text}`,
           );
           return;
         }
@@ -205,16 +206,16 @@ export const ReaderNotePanel = (): React.JSX.Element => {
 
   const copyToast =
     copyToastVisible && typeof document !== 'undefined'
-      ? createPortal(<div className="reader-copy-toast">复制成功</div>, document.body)
+      ? createPortal(<div className="reader-copy-toast">{t('notes.copy_success')}</div>, document.body)
       : null;
 
   return (
     <>
       {copyToast}
       <div className="reader-note-panel-wrapper">
-        <div className="reader-note-panel-title">笔记</div>
+        <div className="reader-note-panel-title">{t('notes.title')}</div>
         {annotations.length === 0 ? (
-          <div className="reader-note-panel-empty">暂无笔记</div>
+          <div className="reader-note-panel-empty">{t('notes.empty')}</div>
         ) : (
           <div className="reader-note-panel-list">
             {groups.map((group) => (
@@ -246,7 +247,7 @@ export const ReaderNotePanel = (): React.JSX.Element => {
           type="button"
           onClick={copyAllNotes}
         >
-          复制全部笔记 · {annotations.length}
+          {t('notes.copy_all', [annotations.length])}
         </button>
       </div>
     </>

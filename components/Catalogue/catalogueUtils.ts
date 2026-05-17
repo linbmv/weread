@@ -11,6 +11,7 @@ import {
 import { getReaderBookmarkForPage } from '@/lib/readerAnnotations';
 import { getReaderProgress } from '@/lib/readerProgress';
 import { getStoredReaderReadingMode } from '@/lib/readerSettings';
+import { t } from '@/locales';
 
 export const turnToCatalogueTitle = (event: Event): void => {
   const target = event.target as HTMLElement;
@@ -68,5 +69,7 @@ export const formatReadingDuration = (durationMs: number | undefined): string =>
   const totalMinutes = Math.max(0, Math.floor((durationMs || 0) / 60_000));
   const hours = Math.floor(totalMinutes / 60);
   const minutes = totalMinutes % 60;
-  return hours > 0 ? `阅读时长${hours}小时${minutes}分` : `阅读时长${minutes}分`;
+  const duration =
+    hours > 0 ? t('common.duration_hours_minutes', [hours, minutes]) : t('common.duration_minutes', [minutes]);
+  return t('catalogue.reading_duration_value', [duration]);
 };

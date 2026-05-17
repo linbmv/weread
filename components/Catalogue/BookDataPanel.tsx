@@ -5,6 +5,7 @@ import { BookCoverFallback } from '@/components/BookCard';
 import { ChevronDownIcon, ChevronUpIcon } from '@/components/Catalogue/BookDataPanelIcons';
 import { buildBookDataPanelData, getMonthBarWidth } from '@/components/Catalogue/bookDataPanelData';
 import { OcticonBookFinished, OcticonBookRead, OcticonBookReading } from '@/components/Octicon';
+import { t } from '@/locales';
 import { createSingleBookBackup, downloadBlob } from '@/lib/backup/exportBackup';
 import { showGlobalFallback } from '@/lib/globalFallback';
 import {
@@ -39,11 +40,11 @@ const DurationValue = ({
     {duration.hours > 0 ? (
       <>
         <span className="reader-catalog-data-value text-[22px] font-bold">{duration.hours}</span>
-        <span className="reader-catalog-data-unit text-[12px] font-normal mr-0.5">小时</span>
+        <span className="reader-catalog-data-unit text-[12px] font-normal mr-0.5">{t('common.hour')}</span>
       </>
     ) : null}
     <span className="reader-catalog-data-value text-[22px] font-bold">{duration.minutes}</span>
-    <span className="reader-catalog-data-unit text-[12px] font-normal">分钟</span>
+    <span className="reader-catalog-data-unit text-[12px] font-normal">{t('common.minute')}</span>
   </div>
 );
 
@@ -52,9 +53,9 @@ const READER_BOOK_STATUS_BUTTONS: Array<{
   label: string;
   status: ReaderBookStatus;
 }> = [
-  { Icon: OcticonBookReading, label: '在读', status: 'reading' },
-  { Icon: OcticonBookRead, label: '读过', status: 'read' },
-  { Icon: OcticonBookFinished, label: '读完', status: 'finished' },
+  { Icon: OcticonBookReading, label: 'shelf.reading', status: 'reading' },
+  { Icon: OcticonBookRead, label: 'shelf.read', status: 'read' },
+  { Icon: OcticonBookFinished, label: 'shelf.finished', status: 'finished' },
 ];
 
 export const BookDataPanel = ({
@@ -132,10 +133,13 @@ export const BookDataPanel = ({
       void createSingleBookBackup({ bookId: bookDetail.id, includeBook })
         .then(({ blob, fileName }) => {
           downloadBlob(blob, fileName);
-          showGlobalFallback({ message: includeBook ? '已导出全本备份' : '已导出用户数据备份', tone: 'success' });
+          showGlobalFallback({
+            message: includeBook ? t('book_data.exported_full_backup') : t('book_data.exported_user_backup'),
+            tone: 'success',
+          });
         })
         .catch((error: unknown) => {
-          showGlobalFallback({ message: error instanceof Error ? error.message : '导出失败', tone: 'error' });
+          showGlobalFallback({ message: error instanceof Error ? error.message : t('book_data.export_failed'), tone: 'error' });
         });
     },
     [bookDetail?.id],
@@ -168,8 +172,10 @@ export const BookDataPanel = ({
               <h2 className="reader-catalog-data-title text-[20px] font-bold leading-snug tracking-wide line-clamp-2">
                 {bookData.title}
               </h2>
-              <div className="reader-catalog-data-muted mt-3 text-[13px]">上次阅读 · {bookData.lastRead}</div>
-              <div className="reader-catalog-data-status-group" aria-label="标记阅读状态">
+              <div className="reader-catalog-data-muted mt-3 text-[13px]">
+                {t('book_data.last_read', [bookData.lastRead])}
+              </div>
+              <div className="reader-catalog-data-status-group" aria-label={t('book_data.mark_reading_status')}>
                 {READER_BOOK_STATUS_BUTTONS.map(({ Icon, label, status }) => {
                   const active = currentBookStatus === status;
                   return (
@@ -181,7 +187,7 @@ export const BookDataPanel = ({
                       onClick={() => toggleBookStatus(status)}
                     >
                       <Icon />
-                      <span>{label}</span>
+                      <span>{t(label)}</span>
                     </button>
                   );
                 })}
@@ -204,7 +210,7 @@ export const BookDataPanel = ({
           <div className="reader-catalog-data-card rounded-[16px] p-5 mb-4">
             <div className="flex justify-around mb-2 mt-1">
               <div className="flex flex-col items-center justify-center px-1">
-                <span className="reader-catalog-data-label text-[13px] mb-1">总字数</span>
+                <span className="reader-catalog-data-label text-[13px] mb-1">{t('book_data.total_words')}</span>
                 <div className="flex items-baseline gap-[2px]">
                   <span className="reader-catalog-data-value text-[26px] font-semibold">{bookData.totalWords.value}</span>
                   <span className="reader-catalog-data-unit text-[12px] font-normal">{bookData.totalWords.unit}</span>
@@ -212,15 +218,15 @@ export const BookDataPanel = ({
               </div>
 
               <div className="flex flex-col items-center justify-center px-1">
-                <span className="reader-catalog-data-label text-[13px] mb-1">阅读天数</span>
+                <span className="reader-catalog-data-label text-[13px] mb-1">{t('book_data.reading_days')}</span>
                 <div className="flex items-baseline gap-[2px]">
                   <span className="reader-catalog-data-value text-[26px] font-semibold">{bookData.readingDays}</span>
-                  <span className="reader-catalog-data-unit text-[12px] font-normal">天</span>
+                  <span className="reader-catalog-data-unit text-[12px] font-normal">{t('common.day')}</span>
                 </div>
               </div>
 
               <div className="flex flex-col items-center justify-center px-1">
-                <span className="reader-catalog-data-label text-[13px] mb-1">阅读进度</span>
+                <span className="reader-catalog-data-label text-[13px] mb-1">{t('book_data.reading_progress')}</span>
                 <div className="flex items-baseline gap-[2px]">
                   <span className="reader-catalog-data-value text-[26px] font-semibold">{bookData.readPercent}</span>
                   <span className="reader-catalog-data-unit text-[12px] font-normal">%</span>
@@ -232,13 +238,13 @@ export const BookDataPanel = ({
           <div className="reader-catalog-data-card rounded-[16px] p-5">
             <div className="flex justify-between mb-6 px-1">
               <div className="flex-1 min-w-0">
-                <div className="reader-catalog-data-label text-[13px] mb-1">累计时长</div>
+                <div className="reader-catalog-data-label text-[13px] mb-1">{t('book_data.total_duration')}</div>
                 <DurationValue duration={bookData.totalDuration} />
                 <div className="reader-catalog-data-subtle text-[11px] mt-1">{bookData.startLabel}</div>
               </div>
 
               <div className="flex-1 pl-6 min-w-0">
-                <div className="reader-catalog-data-label text-[13px] mb-1">单日阅读最久</div>
+                <div className="reader-catalog-data-label text-[13px] mb-1">{t('book_data.max_daily_reading')}</div>
                 <DurationValue duration={bookData.maxDailyDuration} />
                 <div className="reader-catalog-data-subtle text-[11px] mt-1">{bookData.maxDailyDate}</div>
               </div>
@@ -332,7 +338,7 @@ export const BookDataPanel = ({
                   })
                 ) : (
                   <div className="reader-catalog-data-empty h-[44px] flex items-center justify-center text-[13px]">
-                    暂无阅读记录
+                    {t('book_data.no_reading_records')}
                   </div>
                 )}
               </div>
@@ -346,14 +352,14 @@ export const BookDataPanel = ({
             type="button"
             onClick={() => exportCurrentBook(false)}
           >
-            导出用户数据
+            {t('book_data.export_user_data')}
           </button>
           <button
             className="reader-catalog-data-button reader-catalog-data-button-primary flex-1 py-[14px] rounded-[12px] font-medium text-[15px] transition-colors shadow-lg shadow-blue-500/20"
             type="button"
             onClick={() => exportCurrentBook(true)}
           >
-            导出全本
+            {t('book_data.export_full_book')}
           </button>
         </div>
       </div>

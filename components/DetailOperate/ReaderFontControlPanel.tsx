@@ -21,6 +21,7 @@ import {
   mergeReaderFonts,
   normalizeLocalFonts,
 } from '@/components/DetailOperate/fontPanelUtils';
+import { t } from '@/locales';
 
 const FONT_SIZE_SLIDER_THUMB_SIZE = 26;
 
@@ -39,6 +40,10 @@ const isMobileFontAccessViewport = (): boolean => {
 
 const getLocalFontLabel = (fileName: string): string => {
   return fileName.replace(/\.(?:otf|ttf|woff|woff2)$/i, '').trim() || fileName;
+};
+
+const getReaderFontLabel = (font: ReaderFontSetting): string => {
+  return font.id === DEFAULT_READER_FONT.id ? t('font.default') : font.label;
 };
 
 const loadLocalFontFiles = async (files: File[]): Promise<ReaderFontSetting[]> => {
@@ -217,7 +222,7 @@ export const ReaderFontControlPanel = (): React.JSX.Element => {
   const requestSystemFonts = useCallback(async () => {
     if (typeof window === 'undefined') return;
     if (!window.isSecureContext) {
-      setFontAccessMessage('需要 localhost 或 HTTPS');
+      setFontAccessMessage(t('font.requires_secure_context'));
       return;
     }
 
@@ -225,21 +230,21 @@ export const ReaderFontControlPanel = (): React.JSX.Element => {
       .queryLocalFonts;
 
     if (!queryLocalFonts) {
-      setFontAccessMessage('当前浏览器不支持本地字体访问');
+      setFontAccessMessage(t('font.unsupported_local_access'));
       return;
     }
 
     setIsLoadingFonts(true);
-    setFontAccessMessage('正在请求字体权限...');
+    setFontAccessMessage(t('font.requesting_permission'));
 
     try {
       const fonts = await queryLocalFonts.call(window);
       const localFonts = await normalizeLocalFonts(fonts);
       readerSessionSystemFonts = localFonts;
       setSystemFonts(localFonts);
-      setFontAccessMessage(localFonts.length > 0 ? '' : '未找到中文系统字体');
+      setFontAccessMessage(localFonts.length > 0 ? '' : t('font.no_chinese_system_fonts'));
     } catch {
-      setFontAccessMessage('未授权访问系统字体');
+      setFontAccessMessage(t('font.permission_denied'));
     } finally {
       setIsLoadingFonts(false);
     }
@@ -257,13 +262,13 @@ export const ReaderFontControlPanel = (): React.JSX.Element => {
     if (files.length === 0) return;
 
     setIsLoadingFonts(true);
-    setFontAccessMessage('正在加载本地字体...');
+    setFontAccessMessage(t('font.loading_local'));
     try {
       const localFonts = await loadLocalFontFiles(files);
       const nextFonts = mergeReaderFonts(readerSessionSystemFonts, localFonts);
       readerSessionSystemFonts = nextFonts;
       setSystemFonts(nextFonts);
-      setFontAccessMessage(localFonts.length > 0 ? '' : '未找到可加载字体');
+      setFontAccessMessage(localFonts.length > 0 ? '' : t('font.no_loadable_fonts'));
     } finally {
       setIsLoadingFonts(false);
     }
@@ -380,7 +385,7 @@ export const ReaderFontControlPanel = (): React.JSX.Element => {
   return (
     <div className="reader-font-control-panel-wrapper">
       <div className="reader-font-size-section">
-        <div className="reader-font-panel-title">字号大小</div>
+        <div className="reader-font-panel-title">{t('font.size')}</div>
         <div
           className={`font-panel-content-size-wrapper ${isDraggingFontSize ? 'is-dragging' : ''}`}
           style={
@@ -395,7 +400,7 @@ export const ReaderFontControlPanel = (): React.JSX.Element => {
             className="reader_font_control_slider_wrapper font-panel-content-size-slider"
             ref={fontSizeSliderRef}
             role="slider"
-            aria-label="字号大小"
+            aria-label={t('font.size')}
             aria-valuemin={MIN_READER_FONT_SIZE}
             aria-valuemax={MAX_READER_FONT_SIZE}
             aria-valuenow={fontSize}
@@ -415,7 +420,7 @@ export const ReaderFontControlPanel = (): React.JSX.Element => {
 
       <div className="reader-font-family-section">
         <div className="reader-font-panel-heading">
-          <div className="reader-font-panel-title">字体</div>
+          <div className="reader-font-panel-title">{t('font.family')}</div>
           <div className="reader-font-action-area">
             {fontAccessMessage && <span className="reader-font-access-message">{fontAccessMessage}</span>}
             <button
@@ -426,7 +431,7 @@ export const ReaderFontControlPanel = (): React.JSX.Element => {
                 void requestFontAccess();
               }}
             >
-              {isLoadingFonts ? '加载中...' : isMobileFontAccess ? '加载本地字体' : '获取系统字体'}
+              {isLoadingFonts ? t('common.loading') : isMobileFontAccess ? t('font.load_local') : t('font.get_system')}
             </button>
             <input
               ref={localFontInputRef}
@@ -439,7 +444,7 @@ export const ReaderFontControlPanel = (): React.JSX.Element => {
           </div>
         </div>
 
-        <div className="reader-font-category-tabs" role="tablist" aria-label="字体分类" ref={categoryRef}>
+        <div className="reader-font-category-tabs" role="tablist" aria-label={t('font.category')} ref={categoryRef}>
           {fontCategories.map((item) => (
             <button
               className={`reader-font-category-tab ${activeCategory === item.key ? 'is-active' : ''}`}
@@ -447,7 +452,7 @@ export const ReaderFontControlPanel = (): React.JSX.Element => {
               key={item.key}
               type="button"
             >
-              {item.label}[{item.count}]
+              {t(item.labelKey)}[{item.count}]
             </button>
           ))}
         </div>
@@ -462,14 +467,14 @@ export const ReaderFontControlPanel = (): React.JSX.Element => {
                 style={{
                   fontFamily: font.family || undefined,
                 }}
-                title={font.label}
+                title={getReaderFontLabel(font)}
                 type="button"
               >
-                {font.label}
+                {getReaderFontLabel(font)}
               </button>
             ))
           ) : (
-            <div className="reader-font-empty">暂无字体</div>
+            <div className="reader-font-empty">{t('font.no_fonts')}</div>
           )}
         </div>
       </div>

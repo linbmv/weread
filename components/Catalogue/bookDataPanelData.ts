@@ -1,5 +1,6 @@
 import type { BookInfo } from '@/store/books';
 import type { TextSyntaxTree } from '@/lib/transformText';
+import { t } from '@/locales';
 import { getReaderProgress } from '@/lib/readerProgress';
 import { getReaderReadingTimeSummary } from '@/lib/readerReadingTime';
 
@@ -83,9 +84,9 @@ const getMinutesFromDuration = (durationMs: number): number => {
 const formatDurationMinutes = (totalMinutes: number): string => {
   const hours = Math.floor(totalMinutes / 60);
   const minutes = totalMinutes % 60;
-  if (hours > 0 && minutes > 0) return `${hours}小时${minutes}分钟`;
-  if (hours > 0) return `${hours}小时`;
-  return `${minutes}分钟`;
+  if (hours > 0 && minutes > 0) return t('common.duration_hours_minutes', [hours, minutes]);
+  if (hours > 0) return t('common.duration_hours', [hours]);
+  return t('common.duration_minutes', [minutes]);
 };
 
 const getDurationPartsFromMinutes = (totalMinutes: number): { hours: number; minutes: number } => ({
@@ -104,42 +105,44 @@ const getLocalDateFromDayKey = (dayKey: string): Date => {
 
 const formatMonthDay = (timestamp: number): string => {
   const date = new Date(timestamp);
-  return `${date.getMonth() + 1}月${date.getDate()}日`;
+  return new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'numeric' }).format(date);
 };
 
 const formatDayKeyMonth = (dayKey: string): string => {
   const date = getLocalDateFromDayKey(dayKey);
-  return `${date.getMonth() + 1}月`;
+  return new Intl.DateTimeFormat(undefined, { month: 'long' }).format(date);
 };
 
 const formatDayKeyDay = (dayKey: string): string => {
   const date = getLocalDateFromDayKey(dayKey);
-  return `${date.getDate()}日`;
+  return new Intl.DateTimeFormat(undefined, { day: 'numeric' }).format(date);
 };
 
 const formatLastRead = (timestamp?: number): string => {
-  if (!timestamp || !Number.isFinite(timestamp)) return '从未阅读';
+  if (!timestamp || !Number.isFinite(timestamp)) return t('book_data.never_read');
   const date = new Date(timestamp);
   const today = new Date();
   const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
   const dateStart = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
   const dayDiff = Math.round((todayStart - dateStart) / 86_400_000);
-  if (dayDiff === 0) return '今天';
-  if (dayDiff === 1) return '昨天';
-  if (date.getFullYear() === today.getFullYear()) return `${date.getMonth() + 1}月${date.getDate()}日`;
-  return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`;
+  if (dayDiff === 0) return t('common.today');
+  if (dayDiff === 1) return t('common.yesterday');
+  if (date.getFullYear() === today.getFullYear()) {
+    return new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'numeric' }).format(date);
+  }
+  return new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'numeric', year: 'numeric' }).format(date);
 };
 
 const formatWordCount = (rawText: string): { unit: string; value: string } => {
   const count = rawText.replace(/\s/g, '').length;
   if (count >= 10_000) {
     return {
-      unit: '万',
+      unit: t('common.ten_thousand'),
       value: (count / 10_000).toFixed(1).replace(/\.0$/, ''),
     };
   }
   return {
-    unit: '字',
+    unit: t('common.word'),
     value: String(count),
   };
 };
@@ -226,16 +229,18 @@ export const buildBookDataPanelData = (bookDetail: BookInfo, textSyntaxTree: Tex
 
   return {
     lastRead: formatLastRead(progress?.lastReadAt || progress?.updatedAt),
-    maxDailyDate: maxDaily?.durationMs ? formatMonthDay(getLocalDateFromDayKey(maxDaily.dayKey).getTime()) : '暂无记录',
+    maxDailyDate: maxDaily?.durationMs
+      ? formatMonthDay(getLocalDateFromDayKey(maxDaily.dayKey).getTime())
+      : t('common.no_record'),
     maxDailyDuration: getDurationParts(maxDaily?.durationMs || 0),
     monthlyRecords: buildProcessedMonthlyRecords(monthlyRecords),
     readPercent: formatReadPercent(progress?.readPercent),
     readingDays: new Set(visibleDailyRecords.map((record) => record.dayKey)).size,
     showReadingRecords: visibleTotalMinutes > 0,
     startLabel: earliestDay
-      ? `${formatMonthDay(getLocalDateFromDayKey(earliestDay).getTime())}开始阅读`
-      : '尚未开始阅读',
-    title: bookDetail.title || '未命名书籍',
+      ? t('book_data.started_reading', [formatMonthDay(getLocalDateFromDayKey(earliestDay).getTime())])
+      : t('book_data.not_started'),
+    title: bookDetail.title || t('common.unnamed_book'),
     totalDuration: getDurationPartsFromMinutes(displayTotalMinutes),
     totalWords: wordCount,
   };

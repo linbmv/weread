@@ -23,6 +23,7 @@ import {
 } from '@/lib/reader/selectionUtils';
 import type { ReaderNoteEditorState } from '@/lib/reader/useReaderAnnotationActions';
 import { useDelayedUnmount } from '@/lib/reader/useDelayedUnmount';
+import { t } from '@/locales';
 
 interface ReaderSelectionMenuProps {
   onApplyAnnotation: (type: ReaderStyleAnnotationType, color?: string) => ReaderAnnotation[];
@@ -170,7 +171,7 @@ export const ReaderSelectionMenu = ({
             <div className="reader-selection-note-card-content">{note.noteText}</div>
             <div className="reader-selection-note-card-actions">
               <button className="reader-selection-note-card-delete" type="button" onClick={deleteNote}>
-                删除
+                {t('selection.delete')}
               </button>
             </div>
           </div>
@@ -188,7 +189,7 @@ export const ReaderSelectionMenu = ({
           <div className="reader-selection-color-container">
             {READER_ANNOTATION_COLORS.map((color) => (
               <button
-                aria-label={`选择颜色 ${color}`}
+                aria-label={t('selection.choose_color', [color])}
                 className="reader-selection-color-item"
                 key={color}
                 style={{ background: color }}
@@ -206,7 +207,7 @@ export const ReaderSelectionMenu = ({
           <SelectionMenuIcon size="16px">
             <SelectionCopyIcon />
           </SelectionMenuIcon>
-          <span>复制</span>
+          <span>{t('selection.copy')}</span>
         </button>
         <button
           className={`reader-selection-menu-item ${activeStyleType === 'marker' ? 'is-selected' : ''}`}
@@ -217,7 +218,7 @@ export const ReaderSelectionMenu = ({
           <SelectionMenuIcon>
             <SelectionMarkerIcon />
           </SelectionMenuIcon>
-          <span>马克笔</span>
+          <span>{t('selection.marker')}</span>
         </button>
         <button
           className={`reader-selection-menu-item ${activeStyleType === 'wave' ? 'is-selected' : ''}`}
@@ -228,7 +229,7 @@ export const ReaderSelectionMenu = ({
           <SelectionMenuIcon>
             <SelectionWavyIcon />
           </SelectionMenuIcon>
-          <span>波浪线</span>
+          <span>{t('selection.wave')}</span>
         </button>
         <button
           className={`reader-selection-menu-item ${activeStyleType === 'underline' ? 'is-selected' : ''}`}
@@ -239,27 +240,27 @@ export const ReaderSelectionMenu = ({
           <SelectionMenuIcon>
             <SelectionUnderlineIcon />
           </SelectionMenuIcon>
-          <span>直线</span>
+          <span>{t('selection.underline')}</span>
         </button>
         {showClearFormat && (
           <button className="reader-selection-menu-item" type="button" onClick={deleteAnnotation}>
             <SelectionMenuIcon size="19px">
               <SelectionClearFormatIcon />
             </SelectionMenuIcon>
-            <span>清除格式</span>
+            <span>{t('selection.clear_format')}</span>
           </button>
         )}
         <button className="reader-selection-menu-item" type="button" onClick={openNote}>
           <SelectionMenuIcon size="19px">
             <SelectionNoteIcon />
           </SelectionMenuIcon>
-          <span>写想法</span>
+          <span>{t('selection.write_note')}</span>
         </button>
         <button className="reader-selection-menu-item" type="button" onClick={searchSelection}>
           <SelectionMenuIcon size="19px">
             <SelectionSearchIcon />
           </SelectionMenuIcon>
-          <span>查询</span>
+          <span>{t('selection.lookup')}</span>
         </button>
       </div>
     </>
@@ -274,7 +275,7 @@ export const ReaderCopyToast = ({
   visible: boolean;
 }): React.JSX.Element | null => {
   if (!visible) return null;
-  return <div className={`reader-copy-toast ${placement === 'center' ? 'is-center' : ''}`}>已复制到剪切版</div>;
+  return <div className={`reader-copy-toast ${placement === 'center' ? 'is-center' : ''}`}>{t('selection.copied')}</div>;
 };
 
 export const ReaderNoteModal = ({ state, onCancel, onSave }: ReaderNoteModalProps): React.JSX.Element | null => {
@@ -296,16 +297,16 @@ export const ReaderNoteModal = ({ state, onCancel, onSave }: ReaderNoteModalProp
       onMouseDown={(e) => e.stopPropagation()}
     >
       <div className="reader-note-modal">
-        <button className="reader-note-modal-close" aria-label="关闭" type="button" onClick={onCancel}>
+        <button className="reader-note-modal-close" aria-label={t('common.close')} type="button" onClick={onCancel}>
           <OcticonX />
         </button>
-        <div className="reader-note-modal-title">写想法</div>
+        <div className="reader-note-modal-title">{t('selection.write_note')}</div>
         <div className="reader-note-modal-quote">{currentState.quote}</div>
         <textarea
           autoFocus
           className="reader-note-modal-input"
           maxLength={1000}
-          placeholder="写下你的想法"
+          placeholder={t('selection.write_placeholder')}
           value={value}
           onChange={(e) => setValue(e.target.value)}
         />
@@ -316,7 +317,7 @@ export const ReaderNoteModal = ({ state, onCancel, onSave }: ReaderNoteModalProp
             type="button"
             onClick={() => onSave(trimmedValue)}
           >
-            发布
+            {t('selection.publish')}
           </button>
         </div>
       </div>

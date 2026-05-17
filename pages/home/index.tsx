@@ -147,7 +147,7 @@ const withTimeout = <T,>(
 
 const importBookFileWithFallback = (file: File): Promise<ImportedBookData> => {
   const controller = new AbortController();
-  const timeoutMessage = `《${file.name}》解析超时，已中断导入`;
+  const timeoutMessage = t('import.file_timeout', [file.name]);
   return withTimeout(importBookFile(file, { signal: controller.signal }), BOOK_IMPORT_TIMEOUT_MS, timeoutMessage, () =>
     controller.abort(new Error(timeoutMessage)),
   );
@@ -155,10 +155,10 @@ const importBookFileWithFallback = (file: File): Promise<ImportedBookData> => {
 
 const getBookIdentity = (book: Pick<BookInfo, 'fingerprint' | 'id'>): string => book.fingerprint || book.id;
 
-const normalizeBookTitle = (title: string): string => title.trim() || '未命名书籍';
+const normalizeBookTitle = (title: string): string => title.trim() || t('common.unnamed_book');
 
 const resolveUniqueBookTitle = (title: string, existingBooks: BookInfo[], currentIdentity: string): string => {
-  const baseTitle = title.trim() || '未命名书籍';
+  const baseTitle = title.trim() || t('common.unnamed_book');
   const existingTitles = new Set(
     existingBooks.filter((book) => getBookIdentity(book) !== currentIdentity).map((book) => book.title),
   );
@@ -185,7 +185,7 @@ const formatBookFileSize = (size: number): string => {
 };
 
 const formatImportDate = (timestamp?: number): string => {
-  if (!timestamp || !Number.isFinite(timestamp)) return '暂无';
+  if (!timestamp || !Number.isFinite(timestamp)) return t('common.not_available');
   const date = new Date(timestamp);
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -213,8 +213,8 @@ const createImportConflictState = ({
 }): ImportConflictState => {
   const progress = getReaderProgress(existingBook.id);
   const readPercent = formatProgressPercent(progress?.readPercent);
-  const lastReadDateLabel = `上次阅读时间 ${formatImportDate(progress?.updatedAt)}`;
-  const lastReadLabel = readPercent > 0 ? `${lastReadDateLabel} (已阅读 ${readPercent}%)` : lastReadDateLabel;
+  const lastReadDateLabel = t('import.last_read_time', [formatImportDate(progress?.updatedAt)]);
+  const lastReadLabel = readPercent > 0 ? `${lastReadDateLabel} (${t('import.read_percent', [readPercent])})` : lastReadDateLabel;
   return {
     bookId: existingBook.id,
     fileName: file.name,
@@ -228,7 +228,7 @@ const createImportConflictState = ({
 };
 
 const formatBackupCreatedAt = (timestamp?: number): string => {
-  if (!timestamp || !Number.isFinite(timestamp)) return '未知时间';
+  if (!timestamp || !Number.isFinite(timestamp)) return t('common.unknown_time');
   return formatImportDate(timestamp);
 };
 
@@ -245,20 +245,20 @@ const createBackupUserDataConflictState = ({
 }): ImportConflictState => {
   const progress = getReaderProgress(existingBook.id);
   const readPercent = formatProgressPercent(progress?.readPercent);
-  const lastReadDateLabel = `上次阅读时间 ${formatImportDate(progress?.updatedAt)}`;
-  const lastReadLabel = readPercent > 0 ? `${lastReadDateLabel} (已阅读 ${readPercent}%)` : lastReadDateLabel;
+  const lastReadDateLabel = t('import.last_read_time', [formatImportDate(progress?.updatedAt)]);
+  const lastReadLabel = readPercent > 0 ? `${lastReadDateLabel} (${t('import.read_percent', [readPercent])})` : lastReadDateLabel;
   return {
     bookId: existingBook.id,
-    description: `${existingBook.title || archive.book.title} 已存在用户数据，是否继续恢复：`,
-    dialogTitle: '恢复用户数据',
+    description: t('import.existing_user_data', [existingBook.title || archive.book.title]),
+    dialogTitle: t('import.restore_user_data'),
     fileName: file.name,
     fileSizeLabel: formatBookFileSize(file.size),
-    lastReadLabel: `${lastReadLabel} | 备份时间 ${formatBackupCreatedAt(archive.manifest.createdAt)}`,
+    lastReadLabel: `${lastReadLabel} | ${t('import.backup_time', [formatBackupCreatedAt(archive.manifest.createdAt)])}`,
     showApplyToRemaining,
     sourceTypeLabel: 'Archive',
     title: existingBook.title || archive.book.title,
     type: 'restore-user-data',
-    warningText: '恢复将覆盖当前阅读进度、笔记、书签等重要数据',
+    warningText: t('import.restore_warning'),
   };
 };
 
@@ -274,17 +274,17 @@ const createMissingBackupBookState = ({
   return {
     bookId: archive.book.id,
     confirmOnly: true,
-    description: `无法恢复 ${title} 的用户数据，因为书架中找不到对应的书籍。`,
-    dialogTitle: '恢复用户数据',
+    description: t('import.missing_book_description', [title]),
+    dialogTitle: t('import.restore_user_data'),
     disableBookLink: true,
     fileName: file.name,
     fileSizeLabel: formatBookFileSize(file.size),
-    lastReadLabel: `备份时间 ${formatBackupCreatedAt(archive.manifest.createdAt)} | 书籍 ${fingerprint.slice(0, 12)}`,
+    lastReadLabel: `${t('import.backup_time', [formatBackupCreatedAt(archive.manifest.createdAt)])} | ${t('import.book_fingerprint', [fingerprint.slice(0, 12)])}`,
     showApplyToRemaining: false,
     sourceTypeLabel: archive.book.sourceType.toUpperCase(),
     title,
     type: 'missing-book',
-    warningText: '恢复失败：缺失书籍本体',
+    warningText: t('import.missing_book_warning'),
   };
 };
 
@@ -330,12 +330,12 @@ const getRecentHomeBooks = (books: BookInfo[]): BookInfo[] => {
 };
 
 const getImportFailureMessage = (file: File, error: unknown): string => {
-  const message = getErrorMessage(error, '导入失败');
+  const message = getErrorMessage(error, t('import.failed'));
   if (/timeout|timed out|超时/iu.test(message)) {
-    return /^EPUB /iu.test(message) ? `《${file.name}》解析超时，已中断导入` : message;
+    return /^EPUB /iu.test(message) ? t('import.file_timeout', [file.name]) : message;
   }
-  if (/\.epub$/iu.test(file.name)) return `《${file.name}》EPUB 解析失败，已跳过该书`;
-  return `《${file.name}》导入失败，已跳过该书`;
+  if (/\.epub$/iu.test(file.name)) return t('import.epub_failed', [file.name]);
+  return t('import.file_failed', [file.name]);
 };
 
 export const ImportConflictDialog = ({
@@ -362,7 +362,7 @@ export const ImportConflictDialog = ({
   const isConfirmOnly = Boolean(state.confirmOnly);
   const canKeepBoth = !isConfirmOnly && state.type === 'same-title';
   const isCancelDisabled = canKeepBoth && keepBoth;
-  const title = state.type === 'same-book' ? '检测到相同书籍' : '检测到重名书籍';
+  const title = state.type === 'same-book' ? t('import.same_book_title') : t('import.same_title_title');
   const dialogTitle = state.dialogTitle || title;
   const openExistingBook = (event: React.MouseEvent<HTMLAnchorElement>) => {
     event.preventDefault();
@@ -377,7 +377,7 @@ export const ImportConflictDialog = ({
           {dialogTitle}
         </div>
         <div className="home-import-dialog-content">
-          <div>{state.description || `${state.title} 已经在书架中：`}</div>
+          <div>{state.description || t('import.already_in_shelf', [state.title])}</div>
           <div className="home-import-dialog-info">
             {state.disableBookLink ? (
               <div className="home-import-dialog-file">{state.fileName}</div>
@@ -391,17 +391,17 @@ export const ImportConflictDialog = ({
             </div>
           </div>
           {keepBoth ? (
-            <div className="home-import-dialog-note">将自动重命名为 {state.title}(n)</div>
+            <div className="home-import-dialog-note">{t('import.rename_note', [state.title])}</div>
           ) : (
             <div className="home-import-dialog-warning">
-              {state.warningText || '覆盖后，原有的阅读进度和笔记将被清除'}
+              {state.warningText || t('import.overwrite_warning')}
             </div>
           )}
         </div>
         {canKeepBoth && (
           <label className="home-import-dialog-option">
             <input checked={keepBoth} type="checkbox" onChange={(event) => setKeepBoth(event.currentTarget.checked)} />
-            <span>保留两个文件</span>
+            <span>{t('import.keep_both')}</span>
           </label>
         )}
         {!isConfirmOnly && state.showApplyToRemaining && (
@@ -411,7 +411,7 @@ export const ImportConflictDialog = ({
               type="checkbox"
               onChange={(event) => setApplyToRemaining(event.currentTarget.checked)}
             />
-            <span>为后续所有冲突应用相同操作</span>
+            <span>{t('import.apply_to_remaining')}</span>
           </label>
         )}
         <div className="home-import-dialog-actions">
@@ -422,7 +422,7 @@ export const ImportConflictDialog = ({
             type="button"
             onClick={() => onCancel(applyToRemaining)}
           >
-            取消
+            {t('common.cancel')}
           </button>
           <button
             className="home-import-dialog-button home-import-dialog-button-primary"
@@ -435,7 +435,7 @@ export const ImportConflictDialog = ({
               onConfirm(keepBoth ? 'keepBoth' : 'overwrite', applyToRemaining);
             }}
           >
-            确定
+            {t('common.confirm')}
           </button>
         </div>
       </div>
@@ -556,17 +556,17 @@ export const useHomeBookImport = (
 
       const supportedFiles = files.filter(isSupportedImportFile);
       if (supportedFiles.length === 0) {
-        showGlobalFallback({ message: '请选择 TXT、EPUB 或 BDZ 文件', tone: 'error' });
+        showGlobalFallback({ message: t('import.select_supported'), tone: 'error' });
         return;
       }
       if (supportedFiles.length < files.length) {
-        showGlobalFallback({ message: '部分文件格式不支持，已自动跳过', tone: 'info' });
+        showGlobalFallback({ message: t('import.unsupported_skipped'), tone: 'info' });
       }
 
       const latestBooks = await getAllBooks<BookInfo>();
       let workingBooks = latestBooks.error ? bookListRef.current : latestBooks.data;
       if (latestBooks.error) {
-        showGlobalFallback({ message: '书架读取失败，本次导入将使用当前列表继续', tone: 'info' });
+        showGlobalFallback({ message: t('import.shelf_read_failed'), tone: 'info' });
       }
       let importedCount = 0;
       let failedCount = 0;
@@ -587,7 +587,7 @@ export const useHomeBookImport = (
         const { ignoredCount, selected } = selectBackupArchivesForRestore(backupArchives);
         selected.forEach((archive) => parsedBackupByFile.set(archive.file, archive));
         if (ignoredCount > 0) {
-          showGlobalFallback({ message: `已忽略 ${ignoredCount} 个低优先级备份`, tone: 'info' });
+          showGlobalFallback({ message: t('import.ignored_low_priority_backups', [ignoredCount]), tone: 'info' });
         }
       }
       const importQueue = [
@@ -801,11 +801,11 @@ export const useHomeBookImport = (
 
       setBookList(workingBooks);
       if (importedCount > 0 && failedCount > 0) {
-        showGlobalFallback({ message: `已导入 ${importedCount} 本书，${failedCount} 本失败`, tone: 'info' });
+        showGlobalFallback({ message: t('import.success_with_failures', [importedCount, failedCount]), tone: 'info' });
       } else if (importedCount > 0) {
-        showGlobalFallback({ message: `已导入 ${importedCount} 本书`, tone: 'success' });
+        showGlobalFallback({ message: t('import.success', [importedCount]), tone: 'success' });
       } else if (failedCount > 0) {
-        showGlobalFallback({ message: '导入失败', tone: 'error' });
+        showGlobalFallback({ message: t('import.failed'), tone: 'error' });
       }
     })();
   }, [requestConflictDecision, setBookList]);
@@ -1206,7 +1206,7 @@ export const DesktopHome = (): React.JSX.Element => {
               />
             </div>
             <Link className="home-shelf-link" to={ROUTE_PATH.SHELF}>
-              <span>查看我的书架</span>
+              <span>{t('shelf.view')}</span>
               <HomeArrowRightIcon style={{ width: 16, height: 16 }} />
             </Link>
           </div>
@@ -1248,7 +1248,7 @@ export const MobileHome = (): React.JSX.Element => {
           />
           {searchState.searchValue && (
             <button
-              aria-label="清除搜索"
+              aria-label={t('search.clear')}
               className="home-mobile-search-clear reader-search-clear-button"
               type="button"
               onMouseDown={(event) => event.preventDefault()}
@@ -1273,7 +1273,7 @@ export const MobileHome = (): React.JSX.Element => {
           <div className="flex items-center justify-between pt-2">
             <div className="text-text-color-1 text-xl font-medium">{t('my_bookcase')}</div>
             <Link className="home-shelf-link" to={ROUTE_PATH.SHELF}>
-              <span>查看我的书架</span>
+              <span>{t('shelf.view')}</span>
               <HomeArrowRightIcon style={{ width: 14, height: 14 }} />
             </Link>
           </div>

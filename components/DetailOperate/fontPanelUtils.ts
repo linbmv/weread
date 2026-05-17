@@ -10,11 +10,11 @@ export interface BrowserLocalFont {
   blob?: () => Promise<Blob>;
 }
 
-export const FONT_CATEGORY_ITEMS: { key: FontCategory; label: string }[] = [
-  { key: 'all', label: '全部' },
-  { key: 'canger', label: '仓耳' },
-  { key: 'fangzheng', label: '方正' },
-  { key: 'other', label: '其他' },
+export const FONT_CATEGORY_ITEMS: { key: FontCategory; labelKey: string }[] = [
+  { key: 'all', labelKey: 'font.category.all' },
+  { key: 'canger', labelKey: 'font.category.canger' },
+  { key: 'fangzheng', labelKey: 'font.category.fangzheng' },
+  { key: 'other', labelKey: 'font.category.other' },
 ];
 
 const CHINESE_FONT_KEYWORDS = [

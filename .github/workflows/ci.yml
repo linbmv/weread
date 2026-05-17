@@ -11,14 +11,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest]
-        node_version: [20, 22]
-        include:
-          # Active LTS + other OS
-          - os: macos-latest
-            node_version: 22
-          - os: windows-latest
-            node_version: 22
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        node_version: [24.15.0]
       fail-fast: false
     name: "Build&Test: node-${{ matrix.node_version }}, ${{ matrix.os }}"
     steps:
@@ -33,14 +27,13 @@ jobs:
         name: Install pnpm
         id: pnpm-install
         with:
-          version: 7
+          version: 11.1.2
           run_install: false
 
-      - name: Get pnpm store directory
-        id: pnpm-cache
-        shell: bash
-        run: |
-          echo "STORE_PATH=$(pnpm store path)" >> $GITHUB_OUTPUT
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node_version }}
+          cache: pnpm
 
       - name: prepare
         run: pnpm pre

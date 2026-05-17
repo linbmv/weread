@@ -47,11 +47,15 @@ export const normalizeLanguage = (lang: string): Locales => {
 
 export const t = (key: string, params?: Array<string | number>): string => {
   // eslint-disable-next-line n/no-unsupported-features/node-builtins
-  const browserLang = navigator?.language || Locales.en;
+  const browserLang = globalThis.navigator?.language || Locales.en;
   const lang = normalizeLanguage(browserLang);
-  const text = resources[lang]?.translation[key] || '';
+  const text =
+    resources[lang]?.translation[key] ??
+    resources[Locales.en]?.translation[key] ??
+    resources[Locales['zh-CN']]?.translation[key] ??
+    key;
   if (params) {
-    return text?.replace(/\{\{(\w+)\}\}/g, (match, p1) => toString(params[Number(p1)] || match));
+    return text.replace(/\{\{(\w+)\}\}/g, (match, p1) => toString(params[Number(p1)] ?? match));
   }
   return text;
 };

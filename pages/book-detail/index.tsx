@@ -1192,7 +1192,7 @@ export const DesktopBookDetail = (): React.JSX.Element => {
               </a>
               <span className="readerTopBar_link_sep"></span>
               <a className="text-text-color-2 font-normal cursor-pointer hover:text-text-color-1" onClick={toShelf}>
-                我的书架
+                {t('reader.my_shelf')}
               </a>
             </div>
           </div>
@@ -1243,7 +1243,7 @@ export const DesktopBookDetail = (): React.JSX.Element => {
             </a>
             <span className="readerTopBar_link_sep"></span>
             <a className="text-text-color-2 font-normal cursor-pointer hover:text-text-color-1" onClick={toShelf}>
-              我的书架
+              {t('reader.my_shelf')}
             </a>
           </div>
         </div>

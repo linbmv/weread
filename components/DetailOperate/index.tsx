@@ -9,6 +9,7 @@ import { ReaderControlPanelLayer } from '@/components/DetailOperate/ReaderContro
 import { ReaderControlTooltip } from '@/components/DetailOperate/ReaderControlTooltip';
 import { ReaderSettingControlPanel } from '@/components/DetailOperate/ReaderSettingControlPanel';
 import { ReaderThemeControl } from '@/components/DetailOperate/ReaderThemeControl';
+import { t } from '@/locales';
 import { type ReaderTheme, applyReaderTheme, getStoredReaderTheme, saveReaderTheme } from '@/lib/readerSettings';
 import {
   READER_CONTROL_PANEL_MOTION_DURATION,
@@ -34,10 +35,10 @@ const MOBILE_CONTROL_BUTTONS: Array<{
   label: string;
   panel: ReaderControlPanelType;
 }> = [
-  { Icon: ReaderMenuIcon, label: '目录', panel: 'menu' },
-  { Icon: ReaderNoteIcon, label: '笔记', panel: 'note' },
-  { Icon: ReaderSettingIcon, label: '阅读设置', panel: 'setting' },
-  { Icon: ReaderFontIcon, label: '字体', panel: 'font' },
+  { Icon: ReaderMenuIcon, label: 'reader.contents', panel: 'menu' },
+  { Icon: ReaderNoteIcon, label: 'reader.notes', panel: 'note' },
+  { Icon: ReaderSettingIcon, label: 'reader.reading_settings', panel: 'setting' },
+  { Icon: ReaderFontIcon, label: 'reader.font', panel: 'font' },
 ];
 
 const READER_MOBILE_CONTROL_PANEL_FADE_DURATION = 180;
@@ -190,7 +191,7 @@ export const BookDetailOperate = (): React.JSX.Element => {
       <div className="readerControls" ref={controlsRef}>
         <div className="reader-tooltip-container reader-control-tooltip-container">
           <button
-            aria-label="打开目录"
+            aria-label={t('reader.open_contents')}
             aria-expanded={activePanel === 'menu'}
             className="reader-control-button reader-menu-control"
             ref={menuButtonRef}
@@ -199,12 +200,12 @@ export const BookDetailOperate = (): React.JSX.Element => {
           >
             <ReaderMenuIcon />
           </button>
-          <ReaderControlTooltip label="目录" />
+          <ReaderControlTooltip label={t('reader.contents')} />
         </div>
 
         <div className="reader-tooltip-container reader-control-tooltip-container">
           <button
-            aria-label="打开笔记"
+            aria-label={t('reader.open_notes')}
             aria-expanded={activePanel === 'note'}
             className="reader-control-button reader-note-control"
             ref={noteButtonRef}
@@ -213,12 +214,12 @@ export const BookDetailOperate = (): React.JSX.Element => {
           >
             <ReaderNoteIcon />
           </button>
-          <ReaderControlTooltip label="笔记" />
+          <ReaderControlTooltip label={t('reader.notes')} />
         </div>
 
         <div className="reader-tooltip-container reader-control-tooltip-container">
           <button
-            aria-label="打开阅读设置"
+            aria-label={t('reader.open_reading_settings')}
             aria-expanded={activePanel === 'setting'}
             className="reader-control-button reader-setting-control"
             ref={settingButtonRef}
@@ -227,12 +228,12 @@ export const BookDetailOperate = (): React.JSX.Element => {
           >
             <ReaderSettingIcon />
           </button>
-          <ReaderControlTooltip label="阅读设置" />
+          <ReaderControlTooltip label={t('reader.reading_settings')} />
         </div>
 
         <div className="reader-tooltip-container reader-control-tooltip-container">
           <button
-            aria-label="打开字体设置"
+            aria-label={t('reader.open_font_settings')}
             aria-expanded={activePanel === 'font'}
             className="reader-control-button reader-font-control"
             ref={fontButtonRef}
@@ -241,7 +242,7 @@ export const BookDetailOperate = (): React.JSX.Element => {
           >
             <ReaderFontIcon />
           </button>
-          <ReaderControlTooltip label="字体" />
+          <ReaderControlTooltip label={t('reader.font')} />
         </div>
 
         <ReaderThemeControl />
@@ -272,7 +273,7 @@ const MobileReaderThemeButton = ({ onBeforeToggle }: { onBeforeToggle: () => voi
 
   return (
     <button
-      aria-label={theme === 'dark' ? '浅色' : '深色'}
+      aria-label={theme === 'dark' ? t('reader.light') : t('reader.dark')}
       className="reader-mobile-menu-button"
       type="button"
       onClick={toggleTheme}
@@ -520,7 +521,7 @@ export const MobileBookDetailOperate = (): React.JSX.Element => {
           const isActive = activePanel === panel || pendingPanel === panel;
           return (
             <button
-              aria-label={label}
+              aria-label={t(label)}
               aria-expanded={activePanel === panel}
               className={`reader-mobile-menu-button ${isActive ? 'is-active' : ''}`}
               key={panel}

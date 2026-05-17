@@ -1,4 +1,5 @@
 import React from 'react';
+import { t } from '@/locales';
 
 const ReaderPageBookmarkRibbon = ({ active }: { active: boolean }): React.JSX.Element => (
   <svg
@@ -43,7 +44,7 @@ export const ReaderPageBookmarkControl = ({
   active: boolean;
   onToggle: () => void;
 }): React.JSX.Element => {
-  const label = active ? '点击移除标签' : '点击添加标签';
+  const label = active ? t('reader.click_remove_bookmark') : t('reader.click_add_bookmark');
   const onClick = (event: React.MouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
     event.stopPropagation();
