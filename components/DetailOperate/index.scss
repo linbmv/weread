@@ -509,6 +509,47 @@
   display: block;
 }
 
+.reader-menu-search-chapter-header {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  line-height: 24px;
+  text-align: left;
+  transition: background-color 160ms ease, color 160ms ease;
+}
+
+.reader-menu-search-chapter-header:hover {
+  background: var(--front-bg-color-2);
+}
+
+.reader-menu-search-chapter-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reader-menu-search-chapter-chevron {
+  flex: 0 0 auto;
+  color: var(--icon-color-1);
+  transform: rotate(0deg);
+  transition: transform 200ms ease, color 160ms ease;
+}
+
+.reader-menu-search-chapter-header:hover .reader-menu-search-chapter-chevron {
+  color: var(--text-color-1);
+}
+
+.reader-menu-search-chapter-chevron.is-expanded {
+  transform: rotate(90deg);
+}
+
 .reader-setting-control-panel-wrapper {
   width: 28rem;
   max-width: calc(100vw - 120px);

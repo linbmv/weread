@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { debounce } from 'ranuts/utils';
 import { EVENT_NAME, getTextSyntaxTree, syncHook } from '@/lib/subscribe';
 import { trim } from '@/lib/transformText';
-import { OcticonSearch, OcticonXCircle } from '@/components/Octicon';
+import { OcticonChevronRight, OcticonSearch, OcticonXCircle } from '@/components/Octicon';
 import { t } from '@/locales';
 import type { ReaderMenuSearchSessionState, SearchResult } from '@/components/DetailMenu/types';
 import {
@@ -30,6 +30,54 @@ interface ReaderMenuSearchProps {
 
 const ReaderSearchIcon = (): React.JSX.Element => <OcticonSearch className="reader-menu-search-icon" />;
 
+interface SearchResultChapterProps {
+  collapsed: boolean;
+  item: SearchResult;
+  searchKeyword: string;
+  toggleCollapsed: () => void;
+}
+
+const SearchResultChapter = ({
+  collapsed,
+  item,
+  searchKeyword,
+  toggleCollapsed,
+}: SearchResultChapterProps): React.JSX.Element => {
+  const { text = [], title } = item;
+
+  return (
+    <div className="reader-menu-search-result-chapter">
+      <button
+        aria-expanded={!collapsed}
+        className="reader-menu-search-chapter-header text-text-color-1 font-normal text-base px-6 py-2"
+        type="button"
+        onClick={toggleCollapsed}
+      >
+        <span className="reader-menu-search-chapter-title">{title}</span>
+        <OcticonChevronRight
+          className={collapsed ? 'reader-menu-search-chapter-chevron' : 'reader-menu-search-chapter-chevron is-expanded'}
+        />
+      </button>
+      {!collapsed &&
+        text.map((str, i) => {
+          const { blockId, blockLength, matchStart, sentence } = str;
+          return (
+            <div
+              className="text-text-color-2 font-normal text-base py-4 px-6 cursor-pointer hover:bg-front-bg-color-2"
+              data-search-result-block-id={blockId}
+              data-search-result-block-length={`${blockLength}`}
+              data-search-result-match-start={`${matchStart}`}
+              data-search-result-page={`${str.page}`}
+              key={`${blockId}-${i}`}
+            >
+              {renderSearchResultSentence(sentence, searchKeyword)}
+            </div>
+          );
+        })}
+    </div>
+  );
+};
+
 export const ReaderMenuSearch = ({ idleContent }: ReaderMenuSearchProps): React.JSX.Element => {
   const searchResultRef = useRef<HTMLDivElement>(null);
   const searchCacheKey = useMemo(getReaderMenuSearchKey, []);
@@ -39,6 +87,7 @@ export const ReaderMenuSearch = ({ idleContent }: ReaderMenuSearchProps): React.
   const [searchKeyword, setSearchKeyword] = useState(initialSearchState.keyword);
   const [showSearchResult, setShowSearchResult] = useState(initialSearchState.showSearchResult);
   const [searchResult, setSearchResult] = useState<SearchResult[]>(initialSearchState.searchResult);
+  const [collapsedChapterKeys, setCollapsedChapterKeys] = useState<Set<string>>(() => new Set());
 
   const persistSearchState = (state: ReaderMenuSearchSessionState) => {
     saveReaderMenuSearchState(searchCacheKey, state);
@@ -101,6 +150,7 @@ export const ReaderMenuSearch = ({ idleContent }: ReaderMenuSearchProps): React.
     setSearchKeyword('');
     setShowSearchResult(false);
     setSearchResult([]);
+    setCollapsedChapterKeys(new Set());
     clearReaderMenuSearchState(searchCacheKey);
     clearReaderSearchHighlight();
   };
@@ -146,6 +196,10 @@ export const ReaderMenuSearch = ({ idleContent }: ReaderMenuSearchProps): React.
       setReaderMenuSearchHighlight(initialSearchState.keyword, initialSearchState.searchResult);
     }
   }, [initialSearchState, searchCacheKey]);
+
+  useEffect(() => {
+    setCollapsedChapterKeys(new Set());
+  }, [searchKeyword, searchResult]);
 
   useEffect(() => {
     if (
@@ -212,6 +266,18 @@ export const ReaderMenuSearch = ({ idleContent }: ReaderMenuSearchProps): React.
     };
   }, [searchCacheKey, searchResult, showSearchResult]);
 
+  const toggleChapterCollapsed = useCallback((chapterKey: string) => {
+    setCollapsedChapterKeys((current) => {
+      const next = new Set(current);
+      if (next.has(chapterKey)) {
+        next.delete(chapterKey);
+      } else {
+        next.add(chapterKey);
+      }
+      return next;
+    });
+  }, []);
+
   return (
     <div
       className="reader-menu-panel w-md flex flex-col"
@@ -243,26 +309,16 @@ export const ReaderMenuSearch = ({ idleContent }: ReaderMenuSearchProps): React.
         <div className="reader-menu-scroll-area pb-7 overflow-y-auto flex-auto" ref={searchResultRef}>
           {searchResult.length > 0 ? (
             searchResult.map((item) => {
-              const { text = [], index, title } = item;
+              const { index, title } = item;
+              const chapterKey = `${title}-${index}`;
               return (
-                <div key={`${title}-${index}`}>
-                  <div className="text-text-color-1 font-normal text-base px-6 py-2">{title}</div>
-                  {text.map((str, i) => {
-                    const { blockId, blockLength, matchStart, sentence } = str;
-                    return (
-                      <div
-                        className="text-text-color-2 font-normal text-base py-4 px-6 cursor-pointer hover:bg-front-bg-color-2"
-                        data-search-result-block-id={blockId}
-                        data-search-result-block-length={`${blockLength}`}
-                        data-search-result-match-start={`${matchStart}`}
-                        data-search-result-page={`${str.page}`}
-                        key={`${blockId}-${i}`}
-                      >
-                        {renderSearchResultSentence(sentence, searchKeyword)}
-                      </div>
-                    );
-                  })}
-                </div>
+                <SearchResultChapter
+                  collapsed={collapsedChapterKeys.has(chapterKey)}
+                  item={item}
+                  key={chapterKey}
+                  searchKeyword={searchKeyword}
+                  toggleCollapsed={() => toggleChapterCollapsed(chapterKey)}
+                />
               );
             })
           ) : (

@@ -20,6 +20,7 @@ import {
   type ReaderSelectionMenuState,
   getReaderMenuTopBoundary,
   getReaderSelectionMenuTopHeight,
+  isEditableSelectionTarget,
 } from '@/lib/reader/selectionUtils';
 import type { ReaderNoteEditorState } from '@/lib/reader/useReaderAnnotationActions';
 import { useDelayedUnmount } from '@/lib/reader/useDelayedUnmount';
@@ -95,6 +96,25 @@ export const ReaderSelectionMenu = ({
   }, [state?.annotation?.id, state?.bottom, state?.left, state?.mode, state?.placement, state?.text, state?.top]);
 
   const currentState = state || renderState;
+
+  useEffect(() => {
+    if (!currentState) return;
+
+    const copyFromKeyboard = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey) || event.altKey || event.key.toLowerCase() !== 'c') return;
+      if (isEditableSelectionTarget(event.target)) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      onCopy();
+    };
+
+    document.addEventListener('keydown', copyFromKeyboard, true);
+    return () => {
+      document.removeEventListener('keydown', copyFromKeyboard, true);
+    };
+  }, [currentState, onCopy]);
+
   if (!currentState) return null;
 
   const keepSelection = (e: React.MouseEvent | React.PointerEvent) => {
