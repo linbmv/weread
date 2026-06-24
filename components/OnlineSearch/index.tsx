@@ -8,7 +8,7 @@ import {
   type NkswSearchResult,
   type NkswChapter,
 } from '@/lib/9kswClient';
-import { addBook } from '@/store/books';
+import { addBookToShelf } from '@/store/bookshelf';
 import { createReaderPath } from '@/router';
 import { showGlobalFallback } from '@/lib/globalFallback';
 import type { ReaderBookDocument, ReaderDocumentChapter } from '@/lib/readerDocument';
@@ -158,7 +158,7 @@ export const OnlineSearch = ({ isOpen, onClose, initialKeyword }: OnlineSearchPr
       };
 
       const bookId = `9ksw-${book.id}`;
-      const result = await addBook({
+      const result = await addBookToShelf({
         id: bookId,
         title: catalog.title,
         author: '',
@@ -208,7 +208,7 @@ export const OnlineSearch = ({ isOpen, onClose, initialKeyword }: OnlineSearchPr
       };
 
       const bookId = `9ksw-${currentNovelUrl.replace(/[^a-zA-Z0-9]/g, '')}`;
-      const result = await addBook({
+      const result = await addBookToShelf({
         id: bookId,
         title: data.title,
         author: '',

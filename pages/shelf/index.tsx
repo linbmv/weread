@@ -1,7 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, memo } from 'react';
-import type { Dispatch, SetStateAction } from 'react';
 import { Link, useHref, useNavigate } from 'react-router-dom';
-import { useSignal } from 'ranuts/utils';
 import { BookCoverFallback } from '@/components/BookCard';
 import { Loading } from '@/components/Loading';
 import { OcticonXCircle as ShelfSearchClearIcon, OcticonSearch as ShelfSearchIcon } from '@/components/Octicon';
@@ -11,9 +9,8 @@ import { ROUTE_PATH, createReaderPath } from '@/router';
 import { OnlineSearch } from '@/components/OnlineSearch';
 import type { BookInfo } from '@/store/books';
 import {
-  getBookShelf,
-  getBookShelfLoading,
   loadBookShelf,
+  useBookShelf,
 } from '@/store/bookshelf';
 import { startSpaViewTransition } from '@/lib/navigation';
 import {
@@ -42,7 +39,6 @@ import { createEmptyTextSyntaxTree } from '@/lib/transformText';
 import { t } from '@/locales';
 import './index.scss';
 
-const MAX_SHELF_BOOK_LOAD_RETRIES = 3;
 
 type ShelfStatusFilterValue = 'all' | ReaderBookShelfStatus;
 
@@ -75,20 +71,21 @@ const clearReaderSignals = (): void => {
 };
 
 const useShelfBooks = (): {
+  error: string | null;
+  hasLoaded: boolean;
   books: BookInfo[];
   loading: boolean;
 } => {
-  const books = useSignal(getBookShelf);
-  const loading = useSignal(getBookShelfLoading);
+  const { books, error, hasLoaded, loadStatus } = useBookShelf();
+  const loading = loadStatus === 'loading';
 
   useEffect(() => {
-    // 只在书架为空时加载数据
-    if (books.length === 0 && !loading) {
+    if (!hasLoaded && loadStatus !== 'loading') {
       loadBookShelf();
     }
-  }, []);
+  }, [hasLoaded, loadStatus]);
 
-  return { books, loading };
+  return { books, error, hasLoaded, loading };
 };
 
 const ShelfStatusFilter = ({

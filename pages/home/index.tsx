@@ -1,6 +1,6 @@
 import { type KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useHref, useNavigate } from 'react-router-dom';
-import { debounce, useSignal } from 'ranuts/utils';
+import { debounce } from 'ranuts/utils';
 import { BookCard, BookCoverFallback } from '@/components/BookCard';
 import {
   addBook,
@@ -11,12 +11,11 @@ import {
   searchBooksByTitle,
 } from '@/store/books';
 import {
-  getBookShelf,
-  getBookShelfLoading,
   loadBookShelf,
-  upsertBookInShelf,
-  updateBookShelf,
   getBookRecentTimestamp,
+  addBookToShelf,
+  mergeBookShelf,
+  useBookShelf,
 } from '@/store/bookshelf';
 import { trim } from '@/lib/transformText';
 import { startSpaViewTransition } from '@/lib/navigation';
@@ -437,18 +436,17 @@ export interface BookSearchState {
   searchContentResult: SearchResult[];
 }
 
-const useHomeBookList = (): { bookList: BookInfo[]; loading: boolean } => {
-  const bookList = useSignal(getBookShelf);
-  const loading = useSignal(getBookShelfLoading);
+const useHomeBookList = (): { bookList: BookInfo[]; error: string | null; hasLoaded: boolean; loading: boolean } => {
+  const { books, error, hasLoaded, loadStatus } = useBookShelf();
+  const loading = loadStatus === 'loading';
 
   useEffect(() => {
-    // 只在书架为空时加载数据
-    if (bookList.length === 0 && !loading) {
+    if (!hasLoaded && loadStatus !== 'loading') {
       loadBookShelf();
     }
-  }, []);
+  }, [hasLoaded, loadStatus]);
 
-  return { bookList, loading };
+  return { bookList: books, error, hasLoaded, loading };
 };
 
 export const useHomeBookImport = (
@@ -532,6 +530,7 @@ export const useHomeBookImport = (
       }
       let importedCount = 0;
       let failedCount = 0;
+      const changedBooks: BookInfo[] = [];
       const showApplyToRemaining = supportedFiles.length > 1;
       const parsedBackupByFile = new Map<File, ParsedBackupArchive>();
       const backupArchives: ParsedBackupArchive[] = [];
@@ -602,6 +601,7 @@ export const useHomeBookImport = (
                 }
                 await restoreBackupUserData({ archive, targetBookId: result.data.id });
                 workingBooks = upsertBookListItem(workingBooks, result.data);
+                changedBooks.push(result.data);
                 importedCount += 1;
                 continue;
               }
@@ -708,6 +708,7 @@ export const useHomeBookImport = (
               throw new Error(result.message || `Failed to overwrite book: ${file.name}`);
             }
             workingBooks = upsertBookListItem(workingBooks, result.data);
+            changedBooks.push(result.data);
             importedCount += 1;
             continue;
           }
@@ -761,7 +762,9 @@ export const useHomeBookImport = (
         }
       }
 
-      updateBookShelf(workingBooks);
+      if (changedBooks.length > 0) {
+        mergeBookShelf(changedBooks);
+      }
       if (importedCount > 0 && failedCount > 0) {
         showGlobalFallback({ message: t('import.success_with_failures', [importedCount, failedCount]), tone: 'info' });
       } else if (importedCount > 0) {
@@ -1163,7 +1166,7 @@ export const Home = (): React.JSX.Element => {
 export const DesktopHome = (): React.JSX.Element => {
   const inputRef = useRef<HTMLInputElement>(null);
   const searchResultRef = useRef<HTMLDivElement>(null);
-  const { bookList, loading } = useHomeBookList();
+  const { bookList, error, hasLoaded, loading } = useHomeBookList();
   const searchState = useBookSearch(inputRef);
   const { conflictState, onAdd, onCancelConflict, onConfirmConflict } = useHomeBookImport(bookList);
   const recentBookList = useMemo(() => getRecentHomeBooks(bookList), [bookList]);
@@ -1220,6 +1223,10 @@ export const DesktopHome = (): React.JSX.Element => {
             <div className="max-w-7xl mx-auto flex justify-center items-center py-20">
               <Loading />
             </div>
+          ) : error ? (
+            <div className="max-w-7xl mx-auto py-8 text-text-color-2">{t('shelf.load_failed')}</div>
+          ) : hasLoaded && bookList.length === 0 ? (
+            <div className="max-w-7xl mx-auto py-8 text-text-color-2">{t('shelf.empty')}</div>
           ) : (
             <div className="max-w-7xl mx-auto flex flex-row flex-wrap justify-start items-center">
               <ImportCard
@@ -1243,7 +1250,7 @@ export const DesktopHome = (): React.JSX.Element => {
 export const MobileHome = (): React.JSX.Element => {
   const inputRef = useRef<HTMLInputElement>(null);
   const searchResultRef = useRef<HTMLDivElement>(null);
-  const { bookList, loading } = useHomeBookList();
+  const { bookList, error, hasLoaded, loading } = useHomeBookList();
   const searchState = useBookSearch(inputRef);
   const { conflictState, onAdd, onCancelConflict, onConfirmConflict } = useHomeBookImport(bookList);
   const recentBookList = useMemo(() => getRecentHomeBooks(bookList), [bookList]);
@@ -1300,14 +1307,26 @@ export const MobileHome = (): React.JSX.Element => {
             </Link>
           </div>
           <div className="flex flex-row flex-wrap justify-start items-center">
-            <ImportCard
-              className="w-24 h-36 bg-front-bg-color-3 p-5 cursor-pointer justify-center rounded-xl mr-6 items-center flex hover:scale-110 transition-all mt-5"
-              iconSize={54}
-              onAdd={onAdd}
-            />
-            {recentBookList.map((book) => (
-              <BookCard book={book} key={book.id} />
-            ))}
+            {loading ? (
+              <div className="w-full flex justify-center items-center py-20">
+                <Loading />
+              </div>
+            ) : error ? (
+              <div className="w-full py-8 text-text-color-2 text-center">{t('shelf.load_failed')}</div>
+            ) : hasLoaded && bookList.length === 0 ? (
+              <div className="w-full py-8 text-text-color-2 text-center">{t('shelf.empty')}</div>
+            ) : (
+              <>
+                <ImportCard
+                  className="w-24 h-36 bg-front-bg-color-3 p-5 cursor-pointer justify-center rounded-xl mr-6 items-center flex hover:scale-110 transition-all mt-5"
+                  iconSize={54}
+                  onAdd={onAdd}
+                />
+                {recentBookList.map((book) => (
+                  <BookCard book={book} key={book.id} />
+                ))}
+              </>
+            )}
           </div>
         </div>
       )}

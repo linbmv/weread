@@ -164,5 +164,7 @@
   "backup.unsupported_version": "Unsupported BDZ backup version",
   "backup.missing_book_info": "BDZ backup is missing book info",
   "backup.missing_resource": "BDZ is missing resource {{0}}",
-  "backup.user_data_only": "This BDZ only contains user data and has no book content"
+  "backup.user_data_only": "This BDZ only contains user data and has no book content",
+  "shelf.empty": "Your shelf is empty",
+  "shelf.load_failed": "Failed to load shelf. Please try again later"
 }
