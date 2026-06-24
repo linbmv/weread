@@ -1,6 +1,6 @@
 import { type KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useHref, useNavigate } from 'react-router-dom';
-import { debounce } from 'ranuts/utils';
+import { debounce, useSignal } from 'ranuts/utils';
 import { BookCard, BookCoverFallback } from '@/components/BookCard';
 import {
   addBook,
@@ -10,8 +10,15 @@ import {
   searchBooksByContent,
   searchBooksByTitle,
 } from '@/store/books';
+import {
+  getBookShelf,
+  getBookShelfLoading,
+  loadBookShelf,
+  upsertBookInShelf,
+  updateBookShelf,
+  getBookRecentTimestamp,
+} from '@/store/bookshelf';
 import { trim } from '@/lib/transformText';
-import { resumeDB } from '@/store';
 import { startSpaViewTransition } from '@/lib/navigation';
 import { importBookFile, isSupportedBookFile } from '@/lib/bookImporter';
 import type { BookInfo, SearchResult } from '@/store/books';
@@ -53,8 +60,6 @@ const DESKTOP_INPUT_STYLE = {
   '--ran-input-content-font-weight': '400',
 };
 
-const MAX_BOOK_LOAD_RETRIES = 3;
-
 const BOOK_IMPORT_TIMEOUT_MS = 180_000;
 
 type ImportConflictType = 'missing-book' | 'restore-user-data' | 'same-book' | 'same-title';
@@ -62,22 +67,6 @@ type ImportConflictType = 'missing-book' | 'restore-user-data' | 'same-book' | '
 type ImportConflictAction = 'cancel' | 'keepBoth' | 'overwrite';
 
 const HOME_RECENT_BOOK_LIMIT = 6;
-
-// Module-scoped cache that survives Home unmount/remount during a single
-// session — keeping the book list on screen avoids a flash of empty shelf when
-// the user navigates back from the reader. The HMR hook below resets it on
-// hot reload so editing this file doesn't leave a stale snapshot around.
-let homeBookListCache: BookInfo[] | null = null;
-
-if (import.meta.hot) {
-  import.meta.hot.dispose(() => {
-    homeBookListCache = null;
-  });
-}
-
-const writeHomeBookListCache = (books: BookInfo[]): void => {
-  homeBookListCache = books;
-};
 
 interface ImportConflictState {
   bookId: string;
@@ -319,11 +308,6 @@ const upsertBookListItem = (books: BookInfo[], book: BookInfo): BookInfo[] => {
   return [book, ...rest];
 };
 
-const getBookRecentTimestamp = (book: BookInfo): number => {
-  const progress = getReaderProgress(book.id);
-  return Math.max(progress?.updatedAt || 0, progress?.lastReadAt || 0, book.modifyTime || 0, book.createTime || 0);
-};
-
 const getRecentHomeBooks = (books: BookInfo[]): BookInfo[] => {
   return [...books]
     .sort((a, b) => getBookRecentTimestamp(b) - getBookRecentTimestamp(a))
@@ -453,45 +437,22 @@ export interface BookSearchState {
   searchContentResult: SearchResult[];
 }
 
-const useHomeBookList = (): { bookList: BookInfo[]; setBookList: React.Dispatch<React.SetStateAction<BookInfo[]>> } => {
-  const hasCachedBookListRef = useRef(homeBookListCache !== null);
-  const [bookList, setRawBookList] = useState<BookInfo[]>(() => homeBookListCache || []);
-  const setBookList: React.Dispatch<React.SetStateAction<BookInfo[]>> = useCallback((value) => {
-    setRawBookList((previous) => {
-      const next = typeof value === 'function' ? value(previous) : value;
-      writeHomeBookListCache(next);
-      return next;
-    });
-  }, []);
+const useHomeBookList = (): { bookList: BookInfo[]; loading: boolean } => {
+  const bookList = useSignal(getBookShelf);
+  const loading = useSignal(getBookShelfLoading);
 
-  const loadBooks = useCallback(async () => {
-    let attempts = 0;
-    while (attempts < MAX_BOOK_LOAD_RETRIES) {
-      const res = await getAllBooks<BookInfo>();
-      if (!res.error) {
-        setBookList(res.data);
-        return;
-      }
-      attempts++;
-      try {
-        await resumeDB();
-      } catch {
-        // resumeDB rejects only with false; treat as transient and continue retrying.
-      }
+  useEffect(() => {
+    // 只在书架为空时加载数据
+    if (bookList.length === 0 && !loading) {
+      loadBookShelf();
     }
   }, []);
 
-  useEffect(() => {
-    if (hasCachedBookListRef.current) return;
-    loadBooks();
-  }, [loadBooks]);
-
-  return { bookList, setBookList };
+  return { bookList, loading };
 };
 
 export const useHomeBookImport = (
   bookList: BookInfo[],
-  setBookList: React.Dispatch<React.SetStateAction<BookInfo[]>>,
 ): {
   conflictState: ImportConflictState | null;
   onAdd: () => void;
@@ -800,7 +761,7 @@ export const useHomeBookImport = (
         }
       }
 
-      setBookList(workingBooks);
+      updateBookShelf(workingBooks);
       if (importedCount > 0 && failedCount > 0) {
         showGlobalFallback({ message: t('import.success_with_failures', [importedCount, failedCount]), tone: 'info' });
       } else if (importedCount > 0) {
@@ -809,7 +770,7 @@ export const useHomeBookImport = (
         showGlobalFallback({ message: t('import.failed'), tone: 'error' });
       }
     })();
-  }, [requestConflictDecision, setBookList]);
+  }, [requestConflictDecision]);
 
   return { conflictState, onAdd, onCancelConflict, onConfirmConflict };
 };
@@ -1202,9 +1163,9 @@ export const Home = (): React.JSX.Element => {
 export const DesktopHome = (): React.JSX.Element => {
   const inputRef = useRef<HTMLInputElement>(null);
   const searchResultRef = useRef<HTMLDivElement>(null);
-  const { bookList, setBookList } = useHomeBookList();
+  const { bookList, loading } = useHomeBookList();
   const searchState = useBookSearch(inputRef);
-  const { conflictState, onAdd, onCancelConflict, onConfirmConflict } = useHomeBookImport(bookList, setBookList);
+  const { conflictState, onAdd, onCancelConflict, onConfirmConflict } = useHomeBookImport(bookList);
   const recentBookList = useMemo(() => getRecentHomeBooks(bookList), [bookList]);
   useBookSearchNativeNavigation(searchResultRef);
 
@@ -1255,16 +1216,22 @@ export const DesktopHome = (): React.JSX.Element => {
               <HomeArrowRightIcon style={{ width: 16, height: 16 }} />
             </Link>
           </div>
-          <div className="max-w-7xl mx-auto flex flex-row flex-wrap justify-start items-center">
-            <ImportCard
-              className="w-2xs h-40 bg-front-bg-color-3 p-5 cursor-pointer justify-center rounded-xl mr-6 items-center flex hover:scale-110 transition-all mt-5"
-              iconSize={64}
-              onAdd={onAdd}
-            />
-            {recentBookList.map((book) => (
-              <BookCard book={book} key={book.id} />
-            ))}
-          </div>
+          {loading ? (
+            <div className="max-w-7xl mx-auto flex justify-center items-center py-20">
+              <Loading />
+            </div>
+          ) : (
+            <div className="max-w-7xl mx-auto flex flex-row flex-wrap justify-start items-center">
+              <ImportCard
+                className="w-2xs h-40 bg-front-bg-color-3 p-5 cursor-pointer justify-center rounded-xl mr-6 items-center flex hover:scale-110 transition-all mt-5"
+                iconSize={64}
+                onAdd={onAdd}
+              />
+              {recentBookList.map((book) => (
+                <BookCard book={book} key={book.id} />
+              ))}
+            </div>
+          )}
         </div>
       )}
       <ImportConflictDialog state={conflictState} onCancel={onCancelConflict} onConfirm={onConfirmConflict} />
@@ -1276,9 +1243,9 @@ export const DesktopHome = (): React.JSX.Element => {
 export const MobileHome = (): React.JSX.Element => {
   const inputRef = useRef<HTMLInputElement>(null);
   const searchResultRef = useRef<HTMLDivElement>(null);
-  const { bookList, setBookList } = useHomeBookList();
+  const { bookList, loading } = useHomeBookList();
   const searchState = useBookSearch(inputRef);
-  const { conflictState, onAdd, onCancelConflict, onConfirmConflict } = useHomeBookImport(bookList, setBookList);
+  const { conflictState, onAdd, onCancelConflict, onConfirmConflict } = useHomeBookImport(bookList);
   const recentBookList = useMemo(() => getRecentHomeBooks(bookList), [bookList]);
   useBookSearchNativeNavigation(searchResultRef);
 

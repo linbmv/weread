@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, memo } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import { Link, useHref, useNavigate } from 'react-router-dom';
+import { useSignal } from 'ranuts/utils';
 import { BookCoverFallback } from '@/components/BookCard';
 import { Loading } from '@/components/Loading';
 import { OcticonXCircle as ShelfSearchClearIcon, OcticonSearch as ShelfSearchIcon } from '@/components/Octicon';
@@ -8,16 +9,18 @@ import { getAuthState, logout } from '@/store/auth';
 import { LoginModal } from '@/components/LoginModal';
 import { ROUTE_PATH, createReaderPath } from '@/router';
 import { OnlineSearch } from '@/components/OnlineSearch';
-import { getAllBooks } from '@/store/books';
 import type { BookInfo } from '@/store/books';
-import { resumeDB } from '@/store';
+import {
+  getBookShelf,
+  getBookShelfLoading,
+  loadBookShelf,
+} from '@/store/bookshelf';
 import { startSpaViewTransition } from '@/lib/navigation';
 import {
   type ReaderBookShelfStatus,
   getReaderBookShelfStatus,
   useReaderBookStatusRevision,
 } from '@/lib/readerBookStatus';
-import { getReaderProgress } from '@/lib/readerProgress';
 import { useResolvedBookImage } from '@/lib/useResolvedBookImage';
 import {
   ImportCard,
@@ -63,15 +66,6 @@ const ShelfFilterIcon = (): React.JSX.Element => (
   </svg>
 );
 
-const getBookRecentTimestamp = (book: BookInfo): number => {
-  const progress = getReaderProgress(book.id);
-  return Math.max(progress?.updatedAt || 0, progress?.lastReadAt || 0, book.modifyTime || 0, book.createTime || 0);
-};
-
-const sortShelfBooks = (books: BookInfo[]): BookInfo[] => {
-  return [...books].sort((a, b) => getBookRecentTimestamp(b) - getBookRecentTimestamp(a));
-};
-
 const clearReaderSignals = (): void => {
   setPageNum(0);
   setCurrentBookDetail(null);
@@ -83,50 +77,18 @@ const clearReaderSignals = (): void => {
 const useShelfBooks = (): {
   books: BookInfo[];
   loading: boolean;
-  setBooks: Dispatch<SetStateAction<BookInfo[]>>;
 } => {
-  const [books, setBooks] = useState<BookInfo[]>([]);
-  const [loading, setLoading] = useState(true);
-  const setSortedBooks = useCallback<Dispatch<SetStateAction<BookInfo[]>>>((value) => {
-    setBooks((previous) => {
-      const next = typeof value === 'function' ? value(previous) : value;
-      return sortShelfBooks(next);
-    });
-  }, []);
+  const books = useSignal(getBookShelf);
+  const loading = useSignal(getBookShelfLoading);
 
   useEffect(() => {
-    let cancelled = false;
-    const loadBooks = async (): Promise<void> => {
-      let attempts = 0;
-      while (attempts < MAX_SHELF_BOOK_LOAD_RETRIES) {
-        const result = await getAllBooks<BookInfo>();
-        if (!result.error) {
-          if (!cancelled) {
-            setSortedBooks(result.data);
-            setLoading(false);
-          }
-          return;
-        }
-        attempts += 1;
-        try {
-          await resumeDB();
-        } catch {
-          // Retry only; failures are reflected by an empty shelf.
-        }
-      }
-      if (!cancelled) {
-        setBooks([]);
-        setLoading(false);
-      }
-    };
-
-    void loadBooks();
-    return () => {
-      cancelled = true;
-    };
+    // 只在书架为空时加载数据
+    if (books.length === 0 && !loading) {
+      loadBookShelf();
+    }
   }, []);
 
-  return { books, loading, setBooks: setSortedBooks };
+  return { books, loading };
 };
 
 const ShelfStatusFilter = ({
@@ -182,7 +144,7 @@ const ShelfStatusFilter = ({
   );
 };
 
-const ShelfBookItem = ({ book }: { book: BookInfo }): React.JSX.Element => {
+const ShelfBookItem = memo(({ book }: { book: BookInfo }): React.JSX.Element => {
   const navigate = useNavigate();
   const { id, image, title = '', author = '' } = book;
   const resolvedImage = useResolvedBookImage(id, image);
@@ -210,7 +172,13 @@ const ShelfBookItem = ({ book }: { book: BookInfo }): React.JSX.Element => {
     <a className="shelf-book-item" href={href} style={{ viewTransitionName: `book-info-${id}` }} onClick={openBook}>
       <div className="shelf-book-cover">
         {shouldShowImage ? (
-          <img src={resolvedImage} alt={title} onError={() => setImageFailed(true)} />
+          <img
+            src={resolvedImage}
+            alt={title}
+            loading="lazy"
+            decoding="async"
+            onError={() => setImageFailed(true)}
+          />
         ) : (
           <BookCoverFallback className="shelf-book-cover-fallback" title={title} />
         )}
@@ -225,14 +193,14 @@ const ShelfBookItem = ({ book }: { book: BookInfo }): React.JSX.Element => {
       )}
     </a>
   );
-};
+});
 
 export const Shelf = (): React.JSX.Element => {
   const inputRef = useRef<HTMLInputElement>(null);
   const searchResultRef = useRef<HTMLDivElement>(null);
-  const { books, loading, setBooks } = useShelfBooks();
+  const { books, loading } = useShelfBooks();
   const searchState = useBookSearch(inputRef);
-  const { conflictState, onAdd, onCancelConflict, onConfirmConflict } = useHomeBookImport(books, setBooks);
+  const { conflictState, onAdd, onCancelConflict, onConfirmConflict } = useHomeBookImport(books);
   const [searchDraft, setSearchDraft] = useState('');
   const [statusFilter, setStatusFilter] = useState<ShelfStatusFilterValue>('all');
   const [isLoginOpen, setIsLoginOpen] = useState(false);

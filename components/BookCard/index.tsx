@@ -1,5 +1,5 @@
 import { useHref, useNavigate } from 'react-router-dom';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, memo } from 'react';
 import type { BookInfo } from '@/store/books';
 import {
   createEmptyReaderSearchHighlight,
@@ -63,7 +63,7 @@ export const BookCoverFallback = ({
   );
 };
 
-export const BookCard = ({ book }: BookCardProps): React.JSX.Element => {
+export const BookCard = memo(({ book }: BookCardProps): React.JSX.Element => {
   const isMobile = useIsMobile();
   const { id, image, title = '', author = '' } = book || {};
   const onClick = useBookCardNavigate(id);
@@ -89,6 +89,8 @@ export const BookCard = ({ book }: BookCardProps): React.JSX.Element => {
               className="h-28 object-cover mr-5"
               src={resolvedImage}
               alt={title}
+              loading="lazy"
+              decoding="async"
               onError={() => setImageFailed(true)}
             />
           ) : (
@@ -116,4 +118,4 @@ export const BookCard = ({ book }: BookCardProps): React.JSX.Element => {
       </div>
     </a>
   );
-};
+});

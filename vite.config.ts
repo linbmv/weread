@@ -2,6 +2,7 @@ import path, { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import { visualizer } from 'rollup-plugin-visualizer';
 
 const __filename = fileURLToPath(import.meta.url);
 
@@ -16,9 +17,19 @@ const normalizeBase = (value: string | undefined): string => {
 
 export default defineConfig({
   base: normalizeBase(process.env.VITE_BASE_PATH),
-  plugins: [react()],
+  plugins: [
+    react(),
+    // Bundle size analyzer - generates stats.html after build
+    visualizer({
+      open: false,
+      gzipSize: true,
+      brotliSize: true,
+      filename: 'dist/stats.html',
+    }),
+  ],
   build: {
     target: 'esnext',
+    minify: 'esbuild',
     // Split vendor code into stable chunks so user code changes do not bust
     // the long-cached library bundles. Keep heavy / optional libs (flexsearch,
     // jschardet, lit) in their own chunks so they download lazily with the
