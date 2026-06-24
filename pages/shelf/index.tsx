@@ -4,7 +4,10 @@ import { Link, useHref, useNavigate } from 'react-router-dom';
 import { BookCoverFallback } from '@/components/BookCard';
 import { Loading } from '@/components/Loading';
 import { OcticonXCircle as ShelfSearchClearIcon, OcticonSearch as ShelfSearchIcon } from '@/components/Octicon';
+import { getAuthState, logout } from '@/store/auth';
+import { LoginModal } from '@/components/LoginModal';
 import { ROUTE_PATH, createReaderPath } from '@/router';
+import { OnlineSearch } from '@/components/OnlineSearch';
 import { getAllBooks } from '@/store/books';
 import type { BookInfo } from '@/store/books';
 import { resumeDB } from '@/store';
@@ -232,6 +235,9 @@ export const Shelf = (): React.JSX.Element => {
   const { conflictState, onAdd, onCancelConflict, onConfirmConflict } = useHomeBookImport(books, setBooks);
   const [searchDraft, setSearchDraft] = useState('');
   const [statusFilter, setStatusFilter] = useState<ShelfStatusFilterValue>('all');
+  const [isLoginOpen, setIsLoginOpen] = useState(false);
+  const [isOnlineSearchOpen, setIsOnlineSearchOpen] = useState(false);
+  const auth = getAuthState();
   const statusRevision = useReaderBookStatusRevision();
   const isSearchExpanded = Boolean(searchDraft);
   useBookSearchNativeNavigation(searchResultRef);
@@ -287,9 +293,64 @@ export const Shelf = (): React.JSX.Element => {
                 </button>
               )}
             </div>
-            <Link className="shelf-navbar-link" to={ROUTE_PATH.HOME}>
-              {t('home')}
-            </Link>
+            <div className="shelf-navbar-actions" style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+              <button
+                onClick={() => setIsOnlineSearchOpen(true)}
+                className="shelf-navbar-link"
+                style={{
+                  fontSize: 14,
+                  color: 'var(--text-color-primary)',
+                  border: 'none',
+                  background: 'none',
+                  cursor: 'pointer',
+                  padding: 0,
+                }}
+                type="button"
+              >
+                九库搜索
+              </button>
+              <Link className="shelf-navbar-link" to={ROUTE_PATH.HOME}>
+                {t('home')}
+              </Link>
+              {auth.loggedIn ? (
+                <div className="shelf-user-info" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <span className="shelf-username" style={{ fontSize: 14, color: 'var(--text-color-primary)' }}>
+                    {auth.user?.username}
+                  </span>
+                  <button
+                    onClick={() => logout()}
+                    className="shelf-logout-btn"
+                    style={{
+                      fontSize: 14,
+                      color: '#ff4d4f',
+                      border: 'none',
+                      background: 'none',
+                      cursor: 'pointer',
+                      padding: 0,
+                    }}
+                    type="button"
+                  >
+                    退出
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setIsLoginOpen(true)}
+                  className="shelf-login-btn"
+                  style={{
+                    fontSize: 14,
+                    color: 'var(--text-color-primary)',
+                    border: 'none',
+                    background: 'none',
+                    cursor: 'pointer',
+                    padding: 0,
+                  }}
+                  type="button"
+                >
+                  登录
+                </button>
+              )}
+            </div>
           </div>
         </div>
         <SearchResultsPanel
@@ -321,6 +382,8 @@ export const Shelf = (): React.JSX.Element => {
         )}
       </main>
       <ImportConflictDialog state={conflictState} onCancel={onCancelConflict} onConfirm={onConfirmConflict} />
+      <LoginModal isOpen={isLoginOpen} onClose={() => setIsLoginOpen(false)} />
+      <OnlineSearch isOpen={isOnlineSearchOpen} onClose={() => setIsOnlineSearchOpen(false)} />
     </div>
   );
 };

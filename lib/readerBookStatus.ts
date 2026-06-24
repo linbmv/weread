@@ -2,6 +2,20 @@ import { useEffect, useState } from 'react';
 import { READER_BOOK_STATUS_STORE_NAME } from '@/lib/readerStoreNames';
 import { EVENT_NAME, syncHook } from '@/lib/subscribe';
 import { db } from '@/store';
+import { getAuthState, apiFetch } from '@/store/auth';
+
+const syncBookStatusCloud = (bookId: string, status: ReaderBookStatus | null): void => {
+  if (getAuthState().loggedIn) {
+    void apiFetch('/api/sync/status', {
+      method: 'POST',
+      body: JSON.stringify([{
+        bookId,
+        status: status ? { status, updatedAt: Date.now() } : null,
+        updatedAt: Date.now(),
+      }]),
+    });
+  }
+};
 
 export const READER_BOOK_STATUS_OPTIONS = ['reading', 'read', 'finished'] as const;
 
@@ -40,6 +54,33 @@ export const hydrateReaderBookStatus = async (): Promise<void> => {
     if (!record?.bookId || !isReaderBookStatus(record.status)) return;
     nextMap[record.bookId] = record;
   });
+
+  if (getAuthState().loggedIn) {
+    const { data: cloudStatus, error } = await apiFetch<any[]>('/api/sync/status');
+    if (!error && cloudStatus) {
+      for (const item of cloudStatus) {
+        const local = nextMap[item.bookId];
+        if (!local || local.updatedAt < item.updatedAt) {
+          if (item.status) {
+            const record = {
+              bookId: item.bookId,
+              status: item.status.status,
+              updatedAt: item.status.updatedAt || item.updatedAt,
+            };
+            nextMap[item.bookId] = record;
+            void db.update<ReaderBookStatusRecord>({
+              data: record,
+              storeName: READER_BOOK_STATUS_STORE_NAME,
+            });
+          } else {
+            delete nextMap[item.bookId];
+            void db.delete({ key: item.bookId, storeName: READER_BOOK_STATUS_STORE_NAME });
+          }
+        }
+      }
+    }
+  }
+
   bookStatusMapCache = nextMap;
   emitBookStatusChange();
 };
@@ -63,6 +104,7 @@ export const setReaderBookStatus = (bookId: string | undefined | null, status?: 
     delete bookStatusMapCache[bookId];
     void db.delete({ key: bookId, storeName: READER_BOOK_STATUS_STORE_NAME });
     emitBookStatusChange();
+    syncBookStatusCloud(bookId, null);
     return;
   }
 
@@ -74,6 +116,7 @@ export const setReaderBookStatus = (bookId: string | undefined | null, status?: 
   bookStatusMapCache[bookId] = next;
   persistReaderBookStatus(next);
   emitBookStatusChange();
+  syncBookStatusCloud(bookId, status);
 };
 
 export const deleteReaderBookStatus = async (bookId: string): Promise<void> => {
@@ -81,6 +124,7 @@ export const deleteReaderBookStatus = async (bookId: string): Promise<void> => {
   delete bookStatusMapCache[bookId];
   emitBookStatusChange();
   await db.delete({ key: bookId, storeName: READER_BOOK_STATUS_STORE_NAME });
+  syncBookStatusCloud(bookId, null);
 };
 
 export const restoreReaderBookStatusForBook = async ({

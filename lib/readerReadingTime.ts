@@ -5,6 +5,21 @@ import {
 } from '@/lib/readerStoreNames';
 import { createRandomId } from '@/lib/utils';
 import type { ReaderReadingMode } from '@/lib/readerSettings';
+import { getAuthState, apiFetch } from '@/store/auth';
+
+const syncReadingTimeCloud = async (): Promise<void> => {
+  if (getAuthState().loggedIn) {
+    const list = Array.from(dailyAggregateCache.values());
+    const maxUpdatedAt = list.reduce((max, item) => Math.max(max, item.updatedAt), 0) || Date.now();
+    await apiFetch('/api/sync/time', {
+      method: 'POST',
+      body: JSON.stringify({
+        timeData: list,
+        updatedAt: maxUpdatedAt,
+      }),
+    });
+  }
+};
 
 export interface ReaderReadingTimeSegment {
   id: string;
@@ -121,6 +136,23 @@ export const hydrateReaderReadingTime = async (): Promise<void> => {
       dailyAggregateCache.set(record.id, record);
     }
   });
+
+  if (getAuthState().loggedIn) {
+    const { data: cloudRes, error } = await apiFetch<{ timeData: ReaderReadingTimeDailyAggregate[]; updatedAt: number }>('/api/sync/time');
+    if (!error && cloudRes && cloudRes.timeData) {
+      const localMax = result.data.reduce((max, r) => Math.max(max, r.updatedAt), 0);
+      if (localMax < cloudRes.updatedAt) {
+        dailyAggregateCache.clear();
+        for (const item of cloudRes.timeData) {
+          dailyAggregateCache.set(item.id, item);
+          void db.update<ReaderReadingTimeDailyAggregate>({
+            data: item,
+            storeName: READER_READING_TIME_DAILY_STORE_NAME,
+          });
+        }
+      }
+    }
+  }
 };
 
 export const recordReaderReadingTime = (input: ReaderReadingTimeInput): number => {
@@ -132,6 +164,7 @@ export const recordReaderReadingTime = (input: ReaderReadingTimeInput): number =
     });
     upsertDailyAggregate(segment);
   });
+  void syncReadingTimeCloud();
   return segments.reduce((sum, segment) => sum + segment.durationMs, 0);
 };
 

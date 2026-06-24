@@ -1,0 +1,18 @@
+{
+  "name": "weread-backend",
+  "main": "index.ts",
+  "compatibility_date": "2024-04-03",
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "weread_db",
+      "database_id": "af7131c7-1875-46ae-ade1-a4a34d6cf739"
+    }
+  ],
+  "kv_namespaces": [
+    {
+      "binding": "BOOKS_KV",
+      "id": "e9b33a9672e5422d9fc3d6993b5d962e"
+    }
+  ]
+}

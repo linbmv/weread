@@ -4,6 +4,7 @@ import { db } from '@/store';
 import { recordReaderReadingTime } from '@/lib/readerReadingTime';
 import { READER_PROGRESS_STORE_NAME } from '@/lib/readerStoreNames';
 import { clampRatio } from '@/lib/utils';
+import { getAuthState, apiFetch } from '@/store/auth';
 
 export interface ReaderLocator {
   bookId: string;
@@ -315,6 +316,23 @@ export const hydrateReaderProgress = async (): Promise<void> => {
       nextMap[locator.bookId] = locator;
     }
   });
+
+  if (getAuthState().loggedIn) {
+    const { data: cloudProgress, error } = await apiFetch<any[]>('/api/sync/progress');
+    if (!error && cloudProgress) {
+      for (const item of cloudProgress) {
+        const local = nextMap[item.bookId];
+        if (!local || local.updatedAt < item.updatedAt) {
+          nextMap[item.bookId] = item.progress;
+          void db.update<ReaderLocator>({
+            data: item.progress,
+            storeName: STORAGE_KEY,
+          });
+        }
+      }
+    }
+  }
+
   writeProgressMap(nextMap);
   syncHook.call(EVENT_NAME.SET_READER_PROGRESS);
 };
@@ -404,6 +422,18 @@ export const saveReaderProgress = (locator: ReaderLocator): void => {
   map[locator.bookId] = next;
   writeProgressMap(map);
   persistReaderProgress(next);
+
+  if (getAuthState().loggedIn) {
+    void apiFetch('/api/sync/progress', {
+      method: 'POST',
+      body: JSON.stringify([{
+        bookId: next.bookId,
+        progress: next,
+        updatedAt: next.updatedAt,
+      }]),
+    });
+  }
+
   if (
     !previous ||
     previous.titleId !== locator.titleId ||

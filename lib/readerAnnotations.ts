@@ -4,6 +4,22 @@ import { persistReaderSetting, readCachedReaderSetting } from '@/lib/readerSetti
 import { READER_ANNOTATIONS_STORE_NAME } from '@/lib/readerStoreNames';
 import { clamp, createRandomId } from '@/lib/utils';
 import type { ReaderBlock, TextSyntaxTree } from '@/lib/transformText';
+import { getAuthState, apiFetch } from '@/store/auth';
+
+export const syncAnnotationsForBook = (bookId: string): void => {
+  if (getAuthState().loggedIn) {
+    const list = annotationMapCache[bookId] || [];
+    const maxUpdatedAt = list.reduce((max, item) => Math.max(max, item.updatedAt), 0) || Date.now();
+    void apiFetch('/api/sync/annotations', {
+      method: 'POST',
+      body: JSON.stringify([{
+        bookId,
+        annotations: list,
+        updatedAt: maxUpdatedAt,
+      }]),
+    });
+  }
+};
 
 export type ReaderAnnotationType = 'bookmark' | 'marker' | 'note' | 'underline' | 'wave';
 
@@ -106,6 +122,30 @@ export const hydrateReaderAnnotations = async (): Promise<void> => {
     list.push(annotation);
     nextMap[annotation.bookId] = list;
   });
+
+  if (getAuthState().loggedIn) {
+    const { data: cloudAnnotations, error } = await apiFetch<any[]>('/api/sync/annotations');
+    if (!error && cloudAnnotations) {
+      for (const item of cloudAnnotations) {
+        const localList = nextMap[item.bookId] || [];
+        const localMax = localList.reduce((max, a) => Math.max(max, a.updatedAt), 0);
+        
+        if (localMax < item.updatedAt) {
+          nextMap[item.bookId] = item.annotations;
+          for (const oldA of localList) {
+            void db.delete({ key: oldA.id, storeName: ANNOTATION_STORAGE_KEY });
+          }
+          for (const newA of item.annotations) {
+            void db.update<ReaderAnnotation>({
+              data: newA,
+              storeName: ANNOTATION_STORAGE_KEY,
+            });
+          }
+        }
+      }
+    }
+  }
+
   writeAnnotationMap(nextMap);
   emitAnnotationChange();
 };
@@ -231,6 +271,7 @@ export const updateReaderBookmarkPage = (
   map[bookId] = nextList;
   writeAnnotationMap(map);
   emitAnnotationChange();
+  syncAnnotationsForBook(bookId);
   return true;
 };
 
@@ -262,6 +303,7 @@ export const saveReaderBookmark = (bookId: string, draft: ReaderBookmarkDraft): 
   writeAnnotationMap(map);
   persistAnnotation(annotation);
   emitAnnotationChange();
+  syncAnnotationsForBook(bookId);
   return annotation;
 };
 
@@ -329,6 +371,7 @@ export const saveReaderAnnotation = (
   writeAnnotationMap(map);
   persistAnnotation(annotation);
   emitAnnotationChange();
+  syncAnnotationsForBook(bookId);
   return annotation;
 };
 
@@ -354,6 +397,7 @@ export const updateReaderAnnotation = (
   writeAnnotationMap(map);
   persistAnnotation(updated);
   emitAnnotationChange();
+  syncAnnotationsForBook(bookId);
   return updated;
 };
 
@@ -365,6 +409,7 @@ export const deleteReaderAnnotations = (bookId: string, annotationIds: string[])
   writeAnnotationMap(map);
   annotationIds.forEach(deleteAnnotationRecord);
   emitAnnotationChange();
+  syncAnnotationsForBook(bookId);
 };
 
 export const deleteReaderAnnotation = (bookId: string, annotationId: string): void => {
@@ -374,6 +419,7 @@ export const deleteReaderAnnotation = (bookId: string, annotationId: string): vo
   writeAnnotationMap(map);
   deleteAnnotationRecord(annotationId);
   emitAnnotationChange();
+  syncAnnotationsForBook(bookId);
 };
 
 export const getStoredReaderAnnotationColor = (type?: ReaderStyleAnnotationType): string => {

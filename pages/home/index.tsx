@@ -34,6 +34,7 @@ import { getErrorMessage } from '@/lib/utils';
 import { showGlobalFallback } from '@/lib/globalFallback';
 import { clearChapterPaginationCache } from '@/lib/chapterPagination';
 import { Loading } from '@/components/Loading';
+import { OnlineSearch } from '@/components/OnlineSearch';
 import {
   OcticonChevronRight as HomeArrowRightIcon,
   OcticonPlus as HomePlusIcon,
@@ -986,6 +987,7 @@ interface SearchResultsPanelProps {
   state: BookSearchState;
   panelClassName: string;
   searchResultRef: React.RefObject<HTMLDivElement | null>;
+  onSearchOnline?: (keyword: string) => void;
 }
 
 export const SearchResultsPanel = ({
@@ -995,6 +997,7 @@ export const SearchResultsPanel = ({
   state,
   panelClassName,
   searchResultRef,
+  onSearchOnline,
 }: SearchResultsPanelProps): React.JSX.Element => {
   const { searchValue, searchLoading, searchTitleResult, searchAuthorResult, searchContentResult } = state;
   const noResult =
@@ -1012,6 +1015,27 @@ export const SearchResultsPanel = ({
       ref={searchResultRef}
     >
       <div className="overflow-y-auto h-full">
+        {searchValue && !searchLoading && onSearchOnline && (
+          <div
+            className={`${panelClassName} cursor-pointer hover:bg-light-gray-color-1 transition-colors border border-blue-500/20`}
+            onClick={(e) => {
+              e.stopPropagation();
+              onSearchOnline(searchValue);
+            }}
+            style={{ marginBottom: '16px' }}
+          >
+            <div className="py-3.5 px-5 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-blue-500" style={{ fontSize: '18px' }}>🔍</span>
+                <span className="text-text-color-1 font-medium text-lg">
+                  在线搜索小说: <strong className="text-blue-500">"{searchValue}"</strong>
+                </span>
+              </div>
+              <span className="text-blue-500 text-base font-medium">前往九库书屋 →</span>
+            </div>
+          </div>
+        )}
+
         {searchTitleResult.length > 0 && !searchLoading && (
           <div className={panelClassName}>
             <div>
@@ -1072,8 +1096,20 @@ export const SearchResultsPanel = ({
         )}
         {noResult && (
           <div className="h-full">
-            <div className="flex flex-col items-center justify-center h-full">
+            <div className="flex flex-col items-center justify-center h-full gap-4">
               <div className="text-text-color-2 font-normal text-xl">{t('no_result')}</div>
+              {onSearchOnline && (
+                <button
+                  className="px-5 py-2.5 bg-blue-500 text-white rounded-xl hover:bg-blue-600 transition-colors text-base font-medium shadow-md shadow-blue-500/10 cursor-pointer"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onSearchOnline(searchValue);
+                  }}
+                  type="button"
+                >
+                  在「九库书屋」中搜索 "{searchValue}"
+                </button>
+              )}
             </div>
           </div>
         )}
@@ -1172,6 +1208,14 @@ export const DesktopHome = (): React.JSX.Element => {
   const recentBookList = useMemo(() => getRecentHomeBooks(bookList), [bookList]);
   useBookSearchNativeNavigation(searchResultRef);
 
+  const [isOnlineSearchOpen, setIsOnlineSearchOpen] = useState(false);
+  const [onlineSearchKeyword, setOnlineSearchKeyword] = useState('');
+
+  const handleSearchOnline = useCallback((keyword: string) => {
+    setOnlineSearchKeyword(keyword);
+    setIsOnlineSearchOpen(true);
+  }, []);
+
   return (
     <div>
       <div className="w-full bg-front-bg-color-2">
@@ -1192,6 +1236,7 @@ export const DesktopHome = (): React.JSX.Element => {
             state={searchState}
             panelClassName="w-1/2 min-w-2xs block mx-auto bg-front-bg-color-3 rounded-xl py-5 mb-6"
             searchResultRef={searchResultRef}
+            onSearchOnline={handleSearchOnline}
           />
         </div>
       </div>
@@ -1223,6 +1268,7 @@ export const DesktopHome = (): React.JSX.Element => {
         </div>
       )}
       <ImportConflictDialog state={conflictState} onCancel={onCancelConflict} onConfirm={onConfirmConflict} />
+      <OnlineSearch isOpen={isOnlineSearchOpen} onClose={() => setIsOnlineSearchOpen(false)} initialKeyword={onlineSearchKeyword} />
     </div>
   );
 };
@@ -1235,6 +1281,14 @@ export const MobileHome = (): React.JSX.Element => {
   const { conflictState, onAdd, onCancelConflict, onConfirmConflict } = useHomeBookImport(bookList, setBookList);
   const recentBookList = useMemo(() => getRecentHomeBooks(bookList), [bookList]);
   useBookSearchNativeNavigation(searchResultRef);
+
+  const [isOnlineSearchOpen, setIsOnlineSearchOpen] = useState(false);
+  const [onlineSearchKeyword, setOnlineSearchKeyword] = useState('');
+
+  const handleSearchOnline = useCallback((keyword: string) => {
+    setOnlineSearchKeyword(keyword);
+    setIsOnlineSearchOpen(true);
+  }, []);
 
   return (
     <div className="w-full min-h-svh bg-front-bg-color-2">
@@ -1265,6 +1319,7 @@ export const MobileHome = (): React.JSX.Element => {
             state={searchState}
             panelClassName="block mx-auto bg-front-bg-color-3 rounded-xl mb-6"
             searchResultRef={searchResultRef}
+            onSearchOnline={handleSearchOnline}
           />
         </div>
       )}
@@ -1290,6 +1345,7 @@ export const MobileHome = (): React.JSX.Element => {
         </div>
       )}
       <ImportConflictDialog state={conflictState} onCancel={onCancelConflict} onConfirm={onConfirmConflict} />
+      <OnlineSearch isOpen={isOnlineSearchOpen} onClose={() => setIsOnlineSearchOpen(false)} initialKeyword={onlineSearchKeyword} />
     </div>
   );
 };

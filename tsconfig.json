@@ -1,5 +1,5 @@
 {
-  "exclude": ["node_modules/**", "dist/**", "public"],
+  "exclude": ["node_modules/**", "dist/**", "public", "backend/**", "functions/**"],
   "include": ["**/*.ts", "**/*.d.ts", "**/*.tsx", "tailwind.config.ts"],
   "compilerOptions": {
     "module": "ESNext",

@@ -1,6 +1,21 @@
 import { db } from '@/store';
 import { READER_SETTINGS_STORE_NAME } from '@/lib/readerStoreNames';
 import { safeReadStorage, safeWriteStorage } from '@/lib/utils';
+import { getAuthState, apiFetch } from '@/store/auth';
+
+const syncSettingsCloud = async (): Promise<void> => {
+  if (getAuthState().loggedIn) {
+    const records = await getAllReaderSettings();
+    const maxUpdatedAt = records.reduce((max, r) => Math.max(max, r.updatedAt), 0) || Date.now();
+    await apiFetch('/api/sync/settings', {
+      method: 'POST',
+      body: JSON.stringify({
+        settings: records,
+        updatedAt: maxUpdatedAt,
+      }),
+    });
+  }
+};
 
 export interface ReaderSettingRecord {
   key: string;
@@ -34,6 +49,8 @@ export const persistReaderSetting = (key: string, value: string): void => {
       value,
     },
     storeName: READER_SETTINGS_STORE_NAME,
+  }).then(() => {
+    void syncSettingsCloud();
   });
 };
 
@@ -63,9 +80,22 @@ export const restoreReaderSettings = async (records: ReaderSettingRecord[]): Pro
 export const hydrateReaderSettingCache = async (): Promise<void> => {
   const result = await db.readByCursor<ReaderSettingRecord>({ storeName: READER_SETTINGS_STORE_NAME });
   if (result.error) return;
-  result.data.forEach((record) => {
+  const localMap = new Map(result.data.map(r => [r.key, r]));
+  
+  if (getAuthState().loggedIn) {
+    const { data: cloudRes, error } = await apiFetch<{ settings: ReaderSettingRecord[]; updatedAt: number }>('/api/sync/settings');
+    if (!error && cloudRes && cloudRes.settings) {
+      const localMax = result.data.reduce((max, r) => Math.max(max, r.updatedAt), 0);
+      if (localMax < cloudRes.updatedAt) {
+        await restoreReaderSettings(cloudRes.settings);
+        cloudRes.settings.forEach(r => localMap.set(r.key, r));
+      }
+    }
+  }
+
+  for (const [key, record] of localMap.entries()) {
     if (record?.key && typeof record.value === 'string') {
       writeCachedReaderSetting(record.key, record.value);
     }
-  });
+  }
 };

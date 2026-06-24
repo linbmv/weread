@@ -4,6 +4,7 @@ import { createRandomId, getErrorMessage, sha256Hex } from '@/lib/utils';
 import type { BookResourceRecord } from '@/lib/bookResources';
 import type { IDBResult } from '@/lib/indexedDB';
 import type { ReaderBookDocument, ReaderBookSourceType } from '@/lib/readerDocument';
+import { getAuthState, apiFetch } from '@/store/auth';
 
 export interface BookInfo {
   id: string;
@@ -241,6 +242,29 @@ export const addBook = async (data: {
     }
   }
 
+  // If logged in, upload to Cloudflare KV + D1 first
+  if (getAuthState().loggedIn) {
+    const cloudRes = await apiFetch('/api/books', {
+      method: 'POST',
+      body: JSON.stringify({
+        bookInfo: {
+          id,
+          title,
+          author,
+          image,
+          sourceType,
+          createTime: bookInfo.createTime,
+          modifyTime: bookInfo.modifyTime,
+        },
+        document,
+        resources: resources || [],
+      }),
+    });
+    if (cloudRes.error) {
+      return errorResult('同步书籍至云端失败: ' + cloudRes.error);
+    }
+  }
+
   const addResult = await performWorkerOperation<BookInfo>(overwrite ? 'put' : 'add', { bookInfo });
   if (addResult.error) {
     // Race condition: another import added the same book between our get and add.
@@ -288,15 +312,92 @@ export const searchBooksByContent = <T = unknown>(keyword: string): Promise<IDBR
   return performWorkerOperation<T[]>('search', { keyword, searchType: 'content' });
 };
 
-export const getAllBooks = <T = unknown>(): Promise<IDBResult<T[]>> => {
+export const getAllBooks = async <T = unknown>(): Promise<IDBResult<T[]>> => {
+  if (getAuthState().loggedIn) {
+    const { data: cloudBooks, error } = await apiFetch<any[]>('/api/books');
+    if (!error && cloudBooks) {
+      const localResult = await performWorkerOperation<any[]>('getAll');
+      const localBooks = localResult.data || [];
+      const localMap = new Map(localBooks.map((b) => [b.id, b]));
+
+      for (const cloudBook of cloudBooks) {
+        const local = localMap.get(cloudBook.id);
+        if (!local || local.modifyTime !== cloudBook.modify_time) {
+          const bookInfo = {
+            id: cloudBook.id,
+            title: cloudBook.title,
+            author: cloudBook.author,
+            image: cloudBook.image,
+            sourceType: cloudBook.source_type,
+            createTime: cloudBook.create_time,
+            modifyTime: cloudBook.modify_time,
+            document: { version: 1, chapters: [], rawText: '' }, // placeholder
+          };
+          await performWorkerOperation('put', { bookInfo });
+        }
+      }
+
+      const cloudIds = new Set(cloudBooks.map((b) => b.id));
+      for (const localBook of localBooks) {
+        if (!cloudIds.has(localBook.id)) {
+          await performWorkerOperation('delete', { key: localBook.id });
+        }
+      }
+    }
+  }
   return performWorkerOperation<T[]>('getAll');
 };
 
-export const getBookById = <T = unknown>(id: string): Promise<IDBResult<T>> => {
-  return performWorkerOperation<T>('get', { key: id });
+export const getBookById = async <T = unknown>(id: string): Promise<IDBResult<T>> => {
+  const localResult = await performWorkerOperation<T>('get', { key: id });
+  
+  if (getAuthState().loggedIn) {
+    const book = localResult.data as any;
+    const isPlaceholder = !book || !book.document || !book.document.chapters || book.document.chapters.length === 0;
+    
+    if (isPlaceholder) {
+      const { data: cloudContent, error } = await apiFetch<{ document: any; resources: any }>(`/api/books/${id}/content`);
+      if (!error && cloudContent) {
+        const cloudListRes = await apiFetch<any[]>('/api/books');
+        const cloudMeta = cloudListRes.data?.find((b: any) => b.id === id);
+        
+        const bookInfo = {
+          id,
+          title: cloudMeta?.title || book?.title || '未知小说',
+          author: cloudMeta?.author || book?.author || '',
+          image: cloudMeta?.image || book?.image || '',
+          sourceType: cloudMeta?.source_type || book?.sourceType || 'txt',
+          createTime: cloudMeta?.create_time || book?.createTime || Date.now(),
+          modifyTime: cloudMeta?.modify_time || book?.modifyTime || Date.now(),
+          document: cloudContent.document,
+        };
+        
+        await performWorkerOperation('put', { bookInfo });
+        
+        if (cloudContent.resources && cloudContent.resources.length > 0) {
+          try {
+            await persistBookResources(cloudContent.resources.map((record: any) => ({ ...record, bookId: id })));
+          } catch (e) {
+            console.error('Failed to persist book resources:', e);
+          }
+        }
+        
+        return successResult(bookInfo as unknown as T);
+      }
+    }
+  }
+  
+  return localResult;
 };
 
 export const deleteBookById = async (id: string): Promise<IDBResult<null>> => {
+  if (getAuthState().loggedIn) {
+    const cloudRes = await apiFetch(`/api/books/${id}`, { method: 'DELETE' });
+    if (cloudRes.error) {
+      return errorResult('从云端删除书籍失败: ' + cloudRes.error);
+    }
+  }
+
   const result = await performWorkerOperation<null>('delete', { key: id });
   if (!result.error) {
     releaseBookResourceUrls(id);
