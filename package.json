@@ -8,6 +8,7 @@
     "pre": "node --version",
     "dev": "vite --host --force --mode dev",
     "build": "vite build && node scripts/generate-pwa-service-worker.mjs",
+    "build:analyze": "ANALYZE=true vite build && node scripts/generate-pwa-service-worker.mjs",
     "preview": "vite preview --host 0.0.0.0",
     "tsc": "tsc --noEmit",
     "format": "prettier --write .",

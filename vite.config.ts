@@ -15,62 +15,62 @@ const normalizeBase = (value: string | undefined): string => {
   return `/${normalized.replace(/^\/+|\/+$/g, '')}/`;
 };
 
-export default defineConfig({
-  base: normalizeBase(process.env.VITE_BASE_PATH),
-  plugins: [
-    react(),
-    // Bundle size analyzer - generates stats.html after build
-    visualizer({
-      open: false,
-      gzipSize: true,
-      brotliSize: true,
-      filename: 'dist/stats.html',
-    }),
-  ],
-  build: {
-    target: 'esnext',
-    minify: 'esbuild',
-    // Split vendor code into stable chunks so user code changes do not bust
-    // the long-cached library bundles. Keep heavy / optional libs (flexsearch,
-    // jschardet, lit) in their own chunks so they download lazily with the
-    // routes that need them.
-    rollupOptions: {
-      output: {
-        manualChunks(id: string): string | undefined {
-          if (!id.includes('node_modules')) return undefined;
-          if (id.includes('react-router')) return 'vendor-router';
-          if (id.includes('/react-dom/') || id.includes('\\react-dom\\')) return 'vendor-react';
-          if (id.includes('/react/') || id.includes('\\react\\')) return 'vendor-react';
-          if (id.includes('scheduler')) return 'vendor-react';
-          if (id.includes('flexsearch')) return 'vendor-flexsearch';
-          if (id.includes('jschardet')) return 'vendor-jschardet';
-          if (id.includes('lit') || id.includes('@khmyznikov/pwa-install')) return 'vendor-pwa';
-          if (id.includes('ranui') || id.includes('ranuts')) return 'vendor-ranui';
-          return 'vendor';
+export default defineConfig(() => {
+  const shouldAnalyze = process.env.ANALYZE === 'true';
+
+  return {
+    base: normalizeBase(process.env.VITE_BASE_PATH),
+    plugins: [
+      react(),
+      shouldAnalyze &&
+        visualizer({
+          open: false,
+          gzipSize: true,
+          brotliSize: true,
+          filename: 'dist/stats.html',
+        }),
+    ].filter(Boolean),
+    build: {
+      target: 'esnext',
+      minify: 'esbuild',
+      rollupOptions: {
+        output: {
+          manualChunks(id: string): string | undefined {
+            if (!id.includes('node_modules')) return undefined;
+            if (id.includes('react-router')) return 'vendor-router';
+            if (id.includes('/react-dom/') || id.includes('\\react-dom\\')) return 'vendor-react';
+            if (id.includes('/react/') || id.includes('\\react\\')) return 'vendor-react';
+            if (id.includes('scheduler')) return 'vendor-react';
+            if (id.includes('flexsearch')) return 'vendor-flexsearch';
+            if (id.includes('jschardet')) return 'vendor-jschardet';
+            if (id.includes('lit') || id.includes('@khmyznikov/pwa-install')) return 'vendor-pwa';
+            if (id.includes('ranui') || id.includes('ranuts')) return 'vendor-ranui';
+            return 'vendor';
+          },
         },
       },
     },
-  },
-  publicDir: 'public',
-  resolve: {
-    alias: {
-      '@/components': resolve(__dirname, 'components'),
-      '@/router': resolve(__dirname, 'router'),
-      '@/lib': resolve(__dirname, 'lib'),
-      '@/store': resolve(__dirname, 'store'),
-      '@/assets': resolve(__dirname, 'assets'),
-      '@/types': resolve(__dirname, 'types'),
-      '@/styles': resolve(__dirname, 'styles'),
-      '@/pages': resolve(__dirname, 'pages'),
-      '@/locales': resolve(__dirname, 'locales'),
+    publicDir: 'public',
+    resolve: {
+      alias: {
+        '@/components': resolve(__dirname, 'components'),
+        '@/router': resolve(__dirname, 'router'),
+        '@/lib': resolve(__dirname, 'lib'),
+        '@/store': resolve(__dirname, 'store'),
+        '@/assets': resolve(__dirname, 'assets'),
+        '@/types': resolve(__dirname, 'types'),
+        '@/styles': resolve(__dirname, 'styles'),
+        '@/pages': resolve(__dirname, 'pages'),
+        '@/locales': resolve(__dirname, 'locales'),
+      },
+      extensions: ['.mjs', '.js', '.ts', '.jsx', '.tsx', '.json'],
     },
-    extensions: ['.mjs', '.js', '.ts', '.jsx', '.tsx', '.json'],
-  },
-  css: {
-    preprocessorOptions: {
-      scss: {
-        additionalData: `@import "@/styles/base.css";`,
+    css: {
+      preprocessorOptions: {
+        scss: {
+          additionalData: `@import "@/styles/base.css";`,
+        },
       },
     },
-  },
+  };
 });

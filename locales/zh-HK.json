@@ -164,5 +164,7 @@
   "backup.unsupported_version": "不支援的 BDZ 備份版本",
   "backup.missing_book_info": "BDZ 備份缺少書籍資訊",
   "backup.missing_resource": "BDZ 缺少資源 {{0}}",
-  "backup.user_data_only": "該 BDZ 只包含使用者資料，缺少書籍本體"
+  "backup.user_data_only": "該 BDZ 只包含使用者資料，缺少書籍本體",
+  "shelf.empty": "書架為空",
+  "shelf.load_failed": "書架載入失敗，請稍後重試"
 }
