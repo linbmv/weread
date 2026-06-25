@@ -586,7 +586,131 @@ export default {
           }), { headers: { ...cors, "Content-Type": "application/json" } });
         }
       }
-      
+
+      // ============ 管理员 API ============
+      // 检查管理员权限
+      async function checkAdmin(): Promise<boolean> {
+        const adminCheck: any = await env.DB.prepare(
+          "SELECT is_admin FROM users WHERE id = ?"
+        ).bind(user.id).first();
+        return adminCheck && adminCheck.is_admin === 1;
+      }
+
+      // 获取所有用户
+      if (path === "/api/admin/users" && request.method === "GET") {
+        if (!(await checkAdmin())) {
+          return new Response(JSON.stringify({ error: "权限不足" }), { status: 403, headers: { ...cors, "Content-Type": "application/json" } });
+        }
+        const { results } = await env.DB.prepare(`
+          SELECT id, username, is_admin, storage_used, storage_limit,
+                 upload_rate_limit, api_rate_limit, is_active,
+                 created_at, last_login
+          FROM users
+          ORDER BY created_at DESC
+        `).all();
+        return new Response(JSON.stringify(results), { headers: { ...cors, "Content-Type": "application/json" } });
+      }
+
+      // 创建用户
+      if (path === "/api/admin/users" && request.method === "POST") {
+        if (!(await checkAdmin())) {
+          return new Response(JSON.stringify({ error: "权限不足" }), { status: 403, headers: { ...cors, "Content-Type": "application/json" } });
+        }
+        const { username, password, isAdmin: newUserIsAdmin, storageLimit, uploadRateLimit, apiRateLimit } = (await request.json()) as any;
+
+        if (!username || !password) {
+          return new Response(JSON.stringify({ error: "用户名和密码不能为空" }), { status: 400, headers: { ...cors, "Content-Type": "application/json" } });
+        }
+
+        const existing = await env.DB.prepare("SELECT id FROM users WHERE username = ?").bind(username).first();
+        if (existing) {
+          return new Response(JSON.stringify({ error: "用户名已存在" }), { status: 400, headers: { ...cors, "Content-Type": "application/json" } });
+        }
+
+        const userId = crypto.randomUUID();
+        const salt = crypto.randomUUID();
+        const passwordHash = `${salt}:${await hashPassword(password, salt)}`;
+
+        await env.DB.prepare(`
+          INSERT INTO users (
+            id, username, password_hash, is_admin,
+            storage_used, storage_limit, upload_rate_limit, api_rate_limit,
+            is_active, created_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).bind(
+          userId, username, passwordHash, newUserIsAdmin ? 1 : 0,
+          0, storageLimit || 104857600, uploadRateLimit || 10, apiRateLimit || 100,
+          1, Date.now()
+        ).run();
+
+        return new Response(JSON.stringify({ success: true, userId }), { headers: { ...cors, "Content-Type": "application/json" } });
+      }
+
+      // 更新用户
+      if (path === "/api/admin/users/update" && request.method === "POST") {
+        if (!(await checkAdmin())) {
+          return new Response(JSON.stringify({ error: "权限不足" }), { status: 403, headers: { ...cors, "Content-Type": "application/json" } });
+        }
+        const { userId, storageLimit, uploadRateLimit, apiRateLimit, isActive, isAdmin: makeAdmin } = (await request.json()) as any;
+
+        if (!userId) {
+          return new Response(JSON.stringify({ error: "缺少用户ID" }), { status: 400, headers: { ...cors, "Content-Type": "application/json" } });
+        }
+
+        const updates: string[] = [];
+        const params: any[] = [];
+
+        if (storageLimit !== undefined) { updates.push("storage_limit = ?"); params.push(storageLimit); }
+        if (uploadRateLimit !== undefined) { updates.push("upload_rate_limit = ?"); params.push(uploadRateLimit); }
+        if (apiRateLimit !== undefined) { updates.push("api_rate_limit = ?"); params.push(apiRateLimit); }
+        if (isActive !== undefined) { updates.push("is_active = ?"); params.push(isActive ? 1 : 0); }
+        if (makeAdmin !== undefined) { updates.push("is_admin = ?"); params.push(makeAdmin ? 1 : 0); }
+
+        if (updates.length === 0) {
+          return new Response(JSON.stringify({ error: "没有需要更新的字段" }), { status: 400, headers: { ...cors, "Content-Type": "application/json" } });
+        }
+
+        params.push(userId);
+        await env.DB.prepare(`UPDATE users SET ${updates.join(", ")} WHERE id = ?`).bind(...params).run();
+
+        return new Response(JSON.stringify({ success: true }), { headers: { ...cors, "Content-Type": "application/json" } });
+      }
+
+      // 删除用户
+      if (path === "/api/admin/users/delete" && request.method === "POST") {
+        if (!(await checkAdmin())) {
+          return new Response(JSON.stringify({ error: "权限不足" }), { status: 403, headers: { ...cors, "Content-Type": "application/json" } });
+        }
+        const { userId } = (await request.json()) as any;
+
+        if (!userId) {
+          return new Response(JSON.stringify({ error: "缺少用户ID" }), { status: 400, headers: { ...cors, "Content-Type": "application/json" } });
+        }
+        if (userId === user.id) {
+          return new Response(JSON.stringify({ error: "不能删除自己" }), { status: 400, headers: { ...cors, "Content-Type": "application/json" } });
+        }
+
+        await env.DB.prepare("DELETE FROM users WHERE id = ?").bind(userId).run();
+
+        return new Response(JSON.stringify({ success: true }), { headers: { ...cors, "Content-Type": "application/json" } });
+      }
+
+      // 系统统计
+      if (path === "/api/admin/stats" && request.method === "GET") {
+        if (!(await checkAdmin())) {
+          return new Response(JSON.stringify({ error: "权限不足" }), { status: 403, headers: { ...cors, "Content-Type": "application/json" } });
+        }
+        const userCount: any = await env.DB.prepare("SELECT COUNT(*) as count FROM users").first();
+        const bookCount: any = await env.DB.prepare("SELECT COUNT(*) as count FROM book_metadata").first();
+        const totalStorage: any = await env.DB.prepare("SELECT SUM(storage_used) as total FROM users").first();
+
+        return new Response(JSON.stringify({
+          userCount: userCount.count,
+          bookCount: bookCount.count,
+          totalStorage: totalStorage.total || 0,
+        }), { headers: { ...cors, "Content-Type": "application/json" } });
+      }
+
       return new Response(JSON.stringify({ error: "接口不存在" }), { status: 404, headers: { ...cors, "Content-Type": "application/json" } });
     } catch (err: any) {
       return new Response(JSON.stringify({ error: err.message }), { status: 500, headers: { ...cors, "Content-Type": "application/json" } });

@@ -1,0 +1,7 @@
+{"_example": "Fill with {\"file\": \"path\", \"reason\": \"why\"}. Seed rows are skipped."}
+{"file": "package.json", "reason": "技术栈和依赖分析"}
+{"file": "vite.config.ts", "reason": "构建配置审查"}
+{"file": "store/bookshelf.ts", "reason": "刚完成的全局状态重构"}
+{"file": "pages/home/index.tsx", "reason": "首页性能关键路径"}
+{"file": "pages/shelf/index.tsx", "reason": "书架页面性能"}
+{"file": "BOOKSHELF_SYNC_CHANGES.md", "reason": "重构文档，了解最近变更"}

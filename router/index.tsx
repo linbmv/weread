@@ -9,11 +9,13 @@ import { Loading } from '@/components/Loading/index';
 const Home = lazy(() => import('@/pages/home/index').then((m) => ({ default: m.Home })));
 const BookDetail = lazy(() => import('@/pages/book-detail/index').then((m) => ({ default: m.BookDetail })));
 const Shelf = lazy(() => import('@/pages/shelf/index').then((m) => ({ default: m.Shelf })));
+const Admin = lazy(() => import('@/pages/admin/index').then((m) => ({ default: m.AdminPage })));
 
 export enum ROUTE_PATH {
   HOME = '/',
   READER = '/reader',
   SHELF = '/shelf',
+  ADMIN = '/admin',
   LOADING = '/loading',
 }
 
@@ -43,6 +45,10 @@ export const Routes = (): ReactElement | null => {
     {
       path: ROUTE_PATH.SHELF,
       element: withSuspense(<Shelf />),
+    },
+    {
+      path: ROUTE_PATH.ADMIN,
+      element: withSuspense(<Admin />),
     },
     {
       path: ROUTE_PATH.LOADING,

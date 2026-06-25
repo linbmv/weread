@@ -11,6 +11,7 @@ import type { BookInfo } from '@/store/books';
 import {
   loadBookShelf,
   useBookShelf,
+  deleteBookFromShelf,
 } from '@/store/bookshelf';
 import { startSpaViewTransition } from '@/lib/navigation';
 import {
@@ -146,6 +147,8 @@ const ShelfBookItem = memo(({ book }: { book: BookInfo }): React.JSX.Element => 
   const { id, image, title = '', author = '' } = book;
   const resolvedImage = useResolvedBookImage(id, image);
   const [imageFailed, setImageFailed] = useState(false);
+  const [showContextMenu, setShowContextMenu] = useState(false);
+  const [menuPosition, setMenuPosition] = useState({ x: 0, y: 0 });
   const shouldShowImage = Boolean(resolvedImage && !imageFailed);
   const path = createReaderPath(id);
   const href = useHref(path);
@@ -165,8 +168,48 @@ const ShelfBookItem = memo(({ book }: { book: BookInfo }): React.JSX.Element => 
     [navigate, path],
   );
 
+  // 右键菜单处理
+  const handleContextMenu = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setMenuPosition({ x: e.clientX, y: e.clientY });
+    setShowContextMenu(true);
+  }, []);
+
+  // 点击外部关闭菜单
+  useEffect(() => {
+    if (!showContextMenu) return;
+    const handleClick = () => setShowContextMenu(false);
+    document.addEventListener('click', handleClick);
+    return () => document.removeEventListener('click', handleClick);
+  }, [showContextMenu]);
+
+  // 删除书籍
+  const handleDelete = useCallback(async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (!confirm(`确定要删除《${title}》吗？`)) {
+      return;
+    }
+
+    const result = await deleteBookFromShelf(id);
+    if (result.status === 'success') {
+      alert('删除成功');
+      window.location.reload(); // 刷新页面
+    } else {
+      alert(`删除失败: ${result.error}`);
+    }
+  }, [id, title]);
+
   return (
-    <a className="shelf-book-item" href={href} style={{ viewTransitionName: `book-info-${id}` }} onClick={openBook}>
+    <>
+      <a
+        className="shelf-book-item"
+        href={href}
+        style={{ viewTransitionName: `book-info-${id}` }}
+        onClick={openBook}
+        onContextMenu={handleContextMenu}
+      >
       <div className="shelf-book-cover">
         {shouldShowImage ? (
           <img
@@ -189,6 +232,24 @@ const ShelfBookItem = memo(({ book }: { book: BookInfo }): React.JSX.Element => 
         </div>
       )}
     </a>
+
+    {/* 右键菜单 */}
+    {showContextMenu && (
+      <div
+        className="shelf-context-menu"
+        style={{
+          position: 'fixed',
+          left: `${menuPosition.x}px`,
+          top: `${menuPosition.y}px`,
+          zIndex: 1000,
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <button onClick={openBook}>打开</button>
+        <button className="delete-button" onClick={handleDelete}>删除</button>
+      </div>
+    )}
+  </>
   );
 });
 

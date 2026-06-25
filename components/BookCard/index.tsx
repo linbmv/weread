@@ -1,5 +1,5 @@
 import { useHref, useNavigate } from 'react-router-dom';
-import { useEffect, useState, memo } from 'react';
+import { useEffect, useState, memo, useCallback } from 'react';
 import type { BookInfo } from '@/store/books';
 import {
   createEmptyReaderSearchHighlight,
@@ -14,6 +14,7 @@ import { startSpaViewTransition } from '@/lib/navigation';
 import { createReaderPath } from '@/router';
 import { useIsMobile } from '@/lib/hooks';
 import { useResolvedBookImage } from '@/lib/useResolvedBookImage';
+import { deleteBookFromShelf } from '@/store/bookshelf';
 import './index.scss';
 
 interface BookCardProps {
@@ -70,18 +71,55 @@ export const BookCard = memo(({ book }: BookCardProps): React.JSX.Element => {
   const href = useHref(createReaderPath(id ?? ''));
   const resolvedImage = useResolvedBookImage(id, image);
   const [imageFailed, setImageFailed] = useState(false);
+  const [showContextMenu, setShowContextMenu] = useState(false);
+  const [menuPosition, setMenuPosition] = useState({ x: 0, y: 0 });
   const shouldShowImage = Boolean(resolvedImage && !imageFailed);
+
   useEffect(() => {
     setImageFailed(false);
   }, [id, image]);
 
+  // 右键菜单处理
+  const handleContextMenu = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setMenuPosition({ x: e.clientX, y: e.clientY });
+    setShowContextMenu(true);
+  }, []);
+
+  // 点击外部关闭菜单
+  useEffect(() => {
+    if (!showContextMenu) return;
+    const handleClick = () => setShowContextMenu(false);
+    document.addEventListener('click', handleClick);
+    return () => document.removeEventListener('click', handleClick);
+  }, [showContextMenu]);
+
+  // 删除书籍
+  const handleDelete = useCallback(async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (!confirm(`确定要删除《${title}》吗？`)) {
+      return;
+    }
+
+    const result = await deleteBookFromShelf(id);
+    if (result.status === 'success') {
+      alert('删除成功');
+    } else {
+      alert(`删除失败: ${result.error}`);
+    }
+  }, [id, title]);
+
   return (
-    <a
-      onClick={onClick}
-      href={href}
-      style={{ viewTransitionName: `book-info-${id}` }}
-      className={`book-card-item ${isMobile ? MOBILE_CARD_CLASS : DESKTOP_CARD_CLASS}`}
-    >
+    <>
+      <a
+        onClick={onClick}
+        onContextMenu={handleContextMenu}
+        href={href}
+        style={{ viewTransitionName: `book-info-${id}` }}
+        className={`book-card-item ${isMobile ? MOBILE_CARD_CLASS : DESKTOP_CARD_CLASS}`}
+      >
       {!isMobile && (
         <div className="grow-0">
           {shouldShowImage ? (
@@ -117,5 +155,23 @@ export const BookCard = memo(({ book }: BookCardProps): React.JSX.Element => {
         </div>
       </div>
     </a>
+
+    {/* 右键菜单 */}
+    {showContextMenu && (
+      <div
+        className="book-card-context-menu"
+        style={{
+          position: 'fixed',
+          left: `${menuPosition.x}px`,
+          top: `${menuPosition.y}px`,
+          zIndex: 1000,
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <button onClick={onClick}>打开</button>
+        <button className="delete-button" onClick={handleDelete}>删除</button>
+      </div>
+    )}
+  </>
   );
 });

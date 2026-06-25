@@ -1,0 +1,12 @@
+{
+  "id": "performance-audit",
+  "title": "审核项目性能与优化建议",
+  "status": "in_progress",
+  "strategy": "review-audit",
+  "currentPhase": "1",
+  "nextAction": "双模型并行审查：架构、性能、代码质量",
+  "gate": null,
+  "branch": "main",
+  "scope": "performance-audit",
+  "createdAt": "2026-06-24T18:30:00Z"
+}
