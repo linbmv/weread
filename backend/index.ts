@@ -711,6 +711,63 @@ export default {
         }), { headers: { ...cors, "Content-Type": "application/json" } });
       }
 
+      // 修改用户密码
+      if (path === "/api/admin/users/password" && request.method === "POST") {
+        if (!(await checkAdmin())) {
+          return new Response(JSON.stringify({ error: "权限不足" }), { status: 403, headers: { ...cors, "Content-Type": "application/json" } });
+        }
+        const { userId, newPassword } = (await request.json()) as any;
+
+        if (!userId || !newPassword) {
+          return new Response(JSON.stringify({ error: "缺少用户ID或新密码" }), { status: 400, headers: { ...cors, "Content-Type": "application/json" } });
+        }
+
+        const salt = crypto.randomUUID();
+        const passwordHash = `${salt}:${await hashPassword(newPassword, salt)}`;
+
+        await env.DB.prepare("UPDATE users SET password_hash = ? WHERE id = ?").bind(passwordHash, userId).run();
+
+        return new Response(JSON.stringify({ success: true }), { headers: { ...cors, "Content-Type": "application/json" } });
+      }
+
+      // 获取所有用户的书籍（管理员）
+      if (path === "/api/admin/books" && request.method === "GET") {
+        if (!(await checkAdmin())) {
+          return new Response(JSON.stringify({ error: "权限不足" }), { status: 403, headers: { ...cors, "Content-Type": "application/json" } });
+        }
+        const { results } = await env.DB.prepare(`
+          SELECT bm.id, bm.user_id, bm.title, bm.author, bm.source_type,
+                 bm.create_time, bm.modify_time, u.username
+          FROM book_metadata bm
+          LEFT JOIN users u ON bm.user_id = u.id
+          ORDER BY bm.modify_time DESC
+        `).all();
+        return new Response(JSON.stringify(results), { headers: { ...cors, "Content-Type": "application/json" } });
+      }
+
+      // 删除任意用户的书籍（管理员）
+      if (path === "/api/admin/books/delete" && request.method === "POST") {
+        if (!(await checkAdmin())) {
+          return new Response(JSON.stringify({ error: "权限不足" }), { status: 403, headers: { ...cors, "Content-Type": "application/json" } });
+        }
+        const { userId, bookId } = (await request.json()) as any;
+
+        if (!userId || !bookId) {
+          return new Response(JSON.stringify({ error: "缺少用户ID或书籍ID" }), { status: 400, headers: { ...cors, "Content-Type": "application/json" } });
+        }
+
+        // 删除 D1 元数据
+        await env.DB.prepare("DELETE FROM book_metadata WHERE user_id = ? AND id = ?").bind(userId, bookId).run();
+        // 删除相关同步数据
+        await env.DB.prepare("DELETE FROM reading_progress WHERE user_id = ? AND book_id = ?").bind(userId, bookId).run();
+        await env.DB.prepare("DELETE FROM annotations WHERE user_id = ? AND book_id = ?").bind(userId, bookId).run();
+        await env.DB.prepare("DELETE FROM book_status WHERE user_id = ? AND book_id = ?").bind(userId, bookId).run();
+        // 删除 KV 内容
+        await env.BOOKS_KV.delete(`book_content:${userId}:${bookId}`);
+
+        return new Response(JSON.stringify({ success: true }), { headers: { ...cors, "Content-Type": "application/json" } });
+      }
+
       return new Response(JSON.stringify({ error: "接口不存在" }), { status: 404, headers: { ...cors, "Content-Type": "application/json" } });
     } catch (err: any) {
       return new Response(JSON.stringify({ error: err.message }), { status: 500, headers: { ...cors, "Content-Type": "application/json" } });
