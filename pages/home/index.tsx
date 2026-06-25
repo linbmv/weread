@@ -1,6 +1,6 @@
 import { type KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useHref, useNavigate } from 'react-router-dom';
-import { debounce } from 'ranuts/utils';
+import { debounce, getErrorMessage  } from '@/lib/utils';
 import { BookCard, BookCoverFallback } from '@/components/BookCard';
 import {
   addBook,
@@ -35,7 +35,6 @@ import { DEVICE_ENUM, useCheckDevice } from '@/lib/hooks';
 import { useResolvedBookImage } from '@/lib/useResolvedBookImage';
 import { clearReaderBookData } from '@/lib/readerBookData';
 import { getReaderProgress } from '@/lib/readerProgress';
-import { getErrorMessage } from '@/lib/utils';
 import { showGlobalFallback } from '@/lib/globalFallback';
 import { clearChapterPaginationCache } from '@/lib/chapterPagination';
 import { Loading } from '@/components/Loading';
@@ -47,16 +46,7 @@ import {
   OcticonSearch as HomeSearchIcon,
 } from '@/components/Octicon';
 import { t } from '@/locales';
-import 'ranui/input';
 import './index.scss';
-
-const DESKTOP_INPUT_STYLE = {
-  '--ran-input-border-radius': '2rem',
-  '--ran-input-content-border-radius': '2rem',
-  '--ran-input-content-padding': '10px 10px 10px 52px',
-  '--ran-input-content-font-size': '16px',
-  '--ran-input-content-font-weight': '400',
-};
 
 const BOOK_IMPORT_TIMEOUT_MS = 180_000;
 
@@ -1188,12 +1178,12 @@ export const DesktopHome = (): React.JSX.Element => {
               className="absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none z-10"
               style={{ width: 24, height: 24, color: 'var(--icon-color-1)' }}
             />
-            <r-input
-              className="w-full h-full block mx-auto"
-              style={DESKTOP_INPUT_STYLE}
+            <input
+              type="text"
+              className="home-desktop-search-input w-full h-full block mx-auto"
               placeholder={t('search')}
               ref={inputRef}
-            ></r-input>
+            />
           </div>
           <SearchResultsPanel
             state={searchState}

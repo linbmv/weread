@@ -304,3 +304,25 @@
 :root[theme='dark'] .flyout-selector-item:hover {
   background: #3b3b3b;
 }
+
+// Desktop search input (replaces ranui r-input)
+.home-desktop-search-input {
+  border-radius: 2rem;
+  padding: 10px 10px 10px 52px;
+  font-size: 16px;
+  font-weight: 400;
+  border: 1px solid var(--border-color-1);
+  background: var(--front-bg-color-1);
+  color: var(--text-color-1);
+  outline: none;
+  transition: border-color 0.2s;
+
+  &:focus {
+    border-color: var(--blue-1);
+  }
+
+  &::placeholder {
+    color: var(--text-color-3);
+  }
+}
+

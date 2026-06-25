@@ -25,8 +25,6 @@
     "flexsearch": "^0.8.212",
     "jschardet": "^3.1.4",
     "lit": "^3.3.1",
-    "ranui": "0.1.10-alpha-27",
-    "ranuts": "0.1.0-alpha-23",
     "react": "^19.2.1",
     "react-dom": "^19.2.1",
     "react-router-dom": "^7.10.1"

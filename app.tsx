@@ -4,7 +4,6 @@ import { Routes } from './router/index';
 import { closeDB, initDB, resumeDB } from './store';
 import { GlobalFallback } from '@/components/GlobalFallback';
 import { Loading } from '@/components/Loading';
-import 'ranui/button';
 import './styles/view-transition.scss';
 
 export const App = (): JSX.Element => {

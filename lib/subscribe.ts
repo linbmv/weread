@@ -1,4 +1,4 @@
-import { createSignal, subscribers } from 'ranuts/utils';
+import { createSignal, subscribers } from '@/lib/utils';
 import type { BookInfo } from '@/store/books';
 import { createEmptyTextSyntaxTree } from '@/lib/transformText';
 import type { TextSyntaxTree } from '@/lib/transformText';
@@ -45,26 +45,44 @@ export enum EVENT_NAME {
 
 export const syncHook = subscribers;
 
-export const [getCurrentBookDetail, setCurrentBookDetail] = createSignal<BookInfo | null>(null, {
-  subscriber: EVENT_NAME.SET_CURRENT_BOOK_DETAIL,
-});
+const currentBookDetailSignal = createSignal<BookInfo | null>(null);
+export const getCurrentBookDetail = (): BookInfo | null => currentBookDetailSignal.value;
+export const setCurrentBookDetail = (value: BookInfo | null): void => {
+  currentBookDetailSignal.set(value);
+  syncHook.call(EVENT_NAME.SET_CURRENT_BOOK_DETAIL, value);
+};
 
-export const [getTextSyntaxTree, setTextSyntaxTree] = createSignal<TextSyntaxTree>(createEmptyTextSyntaxTree(), {
-  subscriber: EVENT_NAME.SET_TEXT_SYNTAX_TREE,
-});
+const textSyntaxTreeSignal = createSignal<TextSyntaxTree>(createEmptyTextSyntaxTree());
+export const getTextSyntaxTree = (): TextSyntaxTree => textSyntaxTreeSignal.value;
+export const setTextSyntaxTree = (value: TextSyntaxTree): void => {
+  textSyntaxTreeSignal.set(value);
+  syncHook.call(EVENT_NAME.SET_TEXT_SYNTAX_TREE, value);
+};
 
-export const [getReaderSearchHighlight, setReaderSearchHighlight] = createSignal<ReaderSearchHighlight>(
-  createEmptyReaderSearchHighlight(),
-  { subscriber: EVENT_NAME.SET_READER_SEARCH_HIGHLIGHT },
-);
+const readerSearchHighlightSignal = createSignal<ReaderSearchHighlight>(createEmptyReaderSearchHighlight());
+export const getReaderSearchHighlight = (): ReaderSearchHighlight => readerSearchHighlightSignal.value;
+export const setReaderSearchHighlight = (value: ReaderSearchHighlight): void => {
+  readerSearchHighlightSignal.set(value);
+  syncHook.call(EVENT_NAME.SET_READER_SEARCH_HIGHLIGHT, value);
+};
 
-export const [getReaderNavigationTarget, setReaderNavigationTarget] = createSignal<ReaderNavigationTarget>(
-  { revision: 0 },
-  { subscriber: EVENT_NAME.SET_READER_NAVIGATION_TARGET },
-);
+const readerNavigationTargetSignal = createSignal<ReaderNavigationTarget>({ revision: 0 });
+export const getReaderNavigationTarget = (): ReaderNavigationTarget => readerNavigationTargetSignal.value;
+export const setReaderNavigationTarget = (value: ReaderNavigationTarget): void => {
+  readerNavigationTargetSignal.set(value);
+  syncHook.call(EVENT_NAME.SET_READER_NAVIGATION_TARGET, value);
+};
 
-export const [getPageNum, setPageNum] = createSignal<number>(0, { subscriber: EVENT_NAME.SET_CURRENT_BOOK_PAGE });
+const pageNumSignal = createSignal<number>(0);
+export const getPageNum = (): number => pageNumSignal.value;
+export const setPageNum = (value: number): void => {
+  pageNumSignal.set(value);
+  syncHook.call(EVENT_NAME.SET_CURRENT_BOOK_PAGE, value);
+};
 
-export const [getReaderControlPanelActive, setReaderControlPanelActive] = createSignal<boolean>(false, {
-  subscriber: EVENT_NAME.SET_READER_CONTROL_PANEL_ACTIVE,
-});
+const readerControlPanelActiveSignal = createSignal<boolean>(false);
+export const getReaderControlPanelActive = (): boolean => readerControlPanelActiveSignal.value;
+export const setReaderControlPanelActive = (value: boolean): void => {
+  readerControlPanelActiveSignal.set(value);
+  syncHook.call(EVENT_NAME.SET_READER_CONTROL_PANEL_ACTIVE, value);
+};

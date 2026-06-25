@@ -70,3 +70,121 @@ export const sha256Hex = async (value: string | Uint8Array<ArrayBuffer>): Promis
     .map((byte) => byte.toString(16).padStart(2, '0'))
     .join('');
 };
+
+// ============ 轻量级响应式工具 (替代 ranuts/utils) ============
+
+type Listener<T> = (value: T) => void;
+
+interface Signal<T> {
+  value: T;
+  subscribe: (listener: Listener<T>) => () => void;
+  set: (value: T) => void;
+  update: (updater: (prev: T) => T) => void;
+}
+
+/**
+ * 创建响应式信号
+ */
+export function createSignal<T>(initialValue: T): Signal<T> {
+  let value = initialValue;
+  const listeners = new Set<Listener<T>>();
+
+  return {
+    get value() {
+      return value;
+    },
+    set value(newValue: T) {
+      value = newValue;
+      listeners.forEach((listener) => listener(value));
+    },
+    subscribe(listener: Listener<T>) {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+    set(newValue: T) {
+      this.value = newValue;
+    },
+    update(updater: (prev: T) => T) {
+      this.value = updater(value);
+    },
+  };
+}
+
+/**
+ * 订阅者存储（用于全局订阅管理）
+ * 兼容 ranuts 的事件系统 API
+ */
+class SubscribersMap extends Map<string, Set<(value: any) => void>> {
+  /**
+   * 触发事件，调用所有订阅者
+   */
+  call(eventName: string, value?: any): void {
+    const listeners = this.get(eventName);
+    if (listeners) {
+      listeners.forEach((listener) => listener(value));
+    }
+  }
+
+  /**
+   * 订阅事件
+   */
+  tap(eventName: string, listener: (value: any) => void): void {
+    if (!this.has(eventName)) {
+      this.set(eventName, new Set());
+    }
+    this.get(eventName)!.add(listener);
+  }
+
+  /**
+   * 取消订阅
+   */
+  off(eventName: string, listener: (value: any) => void): void {
+    const listeners = this.get(eventName);
+    if (listeners) {
+      listeners.delete(listener);
+    }
+  }
+}
+
+export const subscribers = new SubscribersMap();
+
+/**
+ * 防抖函数
+ */
+export function debounce<T extends (...args: any[]) => any>(
+  func: T,
+  wait: number,
+): (...args: Parameters<T>) => void {
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+  return function (this: any, ...args: Parameters<T>) {
+    if (timeoutId !== null) {
+      clearTimeout(timeoutId);
+    }
+
+    timeoutId = setTimeout(() => {
+      func.apply(this, args);
+      timeoutId = null;
+    }, wait);
+  };
+}
+
+/**
+ * 转换为字符串
+ */
+export function toString(value: unknown): string {
+  if (value === null || value === undefined) {
+    return '';
+  }
+  if (typeof value === 'string') {
+    return value;
+  }
+  if (typeof value === 'number' || typeof value === 'boolean') {
+    return String(value);
+  }
+  if (typeof value === 'object') {
+    return JSON.stringify(value);
+  }
+  return String(value);
+}
+

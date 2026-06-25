@@ -44,7 +44,6 @@ export default defineConfig(() => {
             if (id.includes('flexsearch')) return 'vendor-flexsearch';
             if (id.includes('jschardet')) return 'vendor-jschardet';
             if (id.includes('lit') || id.includes('@khmyznikov/pwa-install')) return 'vendor-pwa';
-            if (id.includes('ranui') || id.includes('ranuts')) return 'vendor-ranui';
             return 'vendor';
           },
         },

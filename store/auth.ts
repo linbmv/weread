@@ -1,4 +1,4 @@
-import { createSignal } from 'ranuts/utils';
+import { createSignal } from '@/lib/utils';
 
 export interface User {
   id: string;
@@ -64,15 +64,15 @@ const initialToken = localStorage.getItem('weread_token');
 const initialUserStr = localStorage.getItem('weread_user');
 const initialUser = initialUserStr ? JSON.parse(initialUserStr) : null;
 
-export const [getAuthState, setAuthState] = createSignal<AuthState>(
-  {
-    loggedIn: !!initialToken,
-    user: initialUser,
-    loading: false,
-    error: null,
-  },
-  { subscriber: 'auth-state-change' }
-);
+const authSignal = createSignal<AuthState>({
+  loggedIn: !!initialToken,
+  user: initialUser,
+  loading: false,
+  error: null,
+});
+
+export const getAuthState = (): AuthState => authSignal.value;
+export const setAuthState = (state: AuthState): void => authSignal.set(state);
 
 export const register = async (username: string, password: string): Promise<boolean> => {
   setAuthState({ ...getAuthState(), loading: true, error: null });

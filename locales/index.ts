@@ -1,7 +1,7 @@
-import { toString } from 'ranuts/utils';
 import zhCN from './zh-CN.json';
 import zhHK from './zh-HK.json';
 import en from './en.json';
+import { toString } from '@/lib/utils';
 
 export enum Locales {
   'zh-CN' = 'zh-CN',

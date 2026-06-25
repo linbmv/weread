@@ -1,7 +1,6 @@
 import { type CSSProperties, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
-import { debounce } from 'ranuts/utils';
 import {
   MOBILE_ICON_STYLE,
   ReaderPageNextIcon,
@@ -12,6 +11,7 @@ import {
   runPageTurn,
   useReaderBookId,
 } from './helpers';
+import { debounce } from '@/lib/utils';
 import type { BookInfo } from '@/store/books';
 import type { ReaderBlock, TextSyntaxTree } from '@/lib/transformText';
 import { ROUTE_PATH } from '@/router';
@@ -102,8 +102,7 @@ import { renderReaderBlock } from '@/components/Reader/ReaderBlock';
 import { ReaderCopyToast, ReaderNoteModal, ReaderSelectionMenu } from '@/components/Reader/ReaderSelectionMenu';
 import { ReaderPageBookmarkControl } from '@/components/Reader/ReaderPageBookmark';
 import { ReaderScrollContent } from '@/components/Reader/ReaderScrollContent';
-import 'ranui/icon';
-import 'ranui/input';
+import { MoreIcon } from '@/components/MoreIcon';
 import './index.scss';
 
 const BOOK_DETAIL_UI_EVENTS = [
@@ -1549,7 +1548,7 @@ export const MobileBookDetail = (): React.JSX.Element => {
       <div className="reader-mobile-scroll-page reader-user-select-disabled" onContextMenu={preventReaderContextMenu}>
         <div className={`reader-mobile-scroll-header ${isTouch ? 'is-visible' : ''}`}>
           <button className="reader-mobile-back-button" type="button" onClick={back}>
-            <r-icon name="more" className="rotate-90" style={MOBILE_ICON_STYLE}></r-icon>
+            <MoreIcon className="rotate-90" style={MOBILE_ICON_STYLE} />
           </button>
           <div className="reader-mobile-scroll-title">{getCurrentBookDetail()?.title}</div>
         </div>
@@ -1602,7 +1601,7 @@ export const MobileBookDetail = (): React.JSX.Element => {
               height: isTouch ? 'calc(var(--spacing) * 14)' : '0px',
             }}
           >
-            <r-icon name="more" className="cursor-pointer rotate-90" style={MOBILE_ICON_STYLE} onClick={back}></r-icon>
+            <MoreIcon className="cursor-pointer rotate-90" style={MOBILE_ICON_STYLE} onClick={back} />
           </div>
           <ReaderPagedContent
             bookId={id || undefined}

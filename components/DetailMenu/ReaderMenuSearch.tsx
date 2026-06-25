@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { debounce } from 'ranuts/utils';
+import { debounce } from '@/lib/utils';
 import { EVENT_NAME, getTextSyntaxTree, syncHook } from '@/lib/subscribe';
 import { trim } from '@/lib/transformText';
 import { OcticonChevronRight, OcticonSearch, OcticonXCircle } from '@/components/Octicon';

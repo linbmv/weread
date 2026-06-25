@@ -19,8 +19,10 @@ import type { ReaderPageTurnEffect } from '@/lib/readerSettings';
 import { getCachedTextSyntaxTree } from '@/lib/reader/textSyntaxTreeCache';
 
 export const MOBILE_ICON_STYLE = {
-  '--ran-icon-font-size': '36px',
-  '--ran-icon-color': 'var(--icon-color-1)',
+  fontSize: '36px',
+  color: 'var(--icon-color-1)',
+  width: '36px',
+  height: '36px',
 };
 
 export const useReaderBookId = (): string | undefined => {

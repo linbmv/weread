@@ -3,7 +3,6 @@ import { BrowserRouter } from 'react-router-dom';
 import { App } from './app';
 import { registerPWAServiceWorker } from './lib/pwa';
 import { bootstrapReaderSettings } from './lib/readerSettings';
-import 'ranui/typings';
 import './styles/base.css';
 
 bootstrapReaderSettings();
