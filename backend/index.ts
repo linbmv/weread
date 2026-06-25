@@ -1,3 +1,9 @@
+/**
+ * WeRead Backend API
+ * Version: 1.0.1
+ * Auto-deploy enabled via GitHub Actions
+ */
+
 export interface Env {
   DB: D1Database;
   BOOKS_KV: KVNamespace;
