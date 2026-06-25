@@ -440,7 +440,7 @@ export default {
 
           // 同时查询书籍元数据，避免前端二次请求
           const bookMeta: any = await env.DB.prepare(
-            "SELECT id, title, author, image, source_type, create_time, modify_time FROM books WHERE user_id = ? AND id = ?"
+            "SELECT id, title, author, image, source_type, create_time, modify_time FROM book_metadata WHERE user_id = ? AND id = ?"
           ).bind(user.id, bookId).first();
 
           const parsedContent = JSON.parse(content);
