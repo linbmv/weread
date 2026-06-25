@@ -287,26 +287,35 @@ export default {
 
       // Public Auth routes
       if (path === "/api/auth/register" && request.method === "POST") {
+        // 🔒 注册已禁用 - 防止恶意注册和滥用
+        // 如需启用，请使用邀请码系统或联系管理员手动创建账号
+        return new Response(
+          JSON.stringify({ error: "注册功能已关闭。如需账号，请联系管理员。" }),
+          { status: 403, headers: { ...cors, "Content-Type": "application/json" } }
+        );
+
+        /* 原注册逻辑已禁用
         const { username, password } = (await request.json()) as any;
         if (!username || !password) {
           return new Response(JSON.stringify({ error: "请输入用户名和密码" }), { status: 400, headers: { ...cors, "Content-Type": "application/json" } });
         }
-        
+
         // Check if user exists
         const existing = await env.DB.prepare("SELECT id FROM users WHERE username = ?").bind(username).first();
         if (existing) {
           return new Response(JSON.stringify({ error: "用户名已存在" }), { status: 400, headers: { ...cors, "Content-Type": "application/json" } });
         }
-        
+
         const userId = crypto.randomUUID();
         const salt = crypto.randomUUID(); // Use random uuid as salt
         const passwordHash = `${salt}:${await hashPassword(password, salt)}`;
-        
+
         await env.DB.prepare("INSERT INTO users (id, username, password_hash, created_at) VALUES (?, ?, ?, ?)")
           .bind(userId, username, passwordHash, Date.now())
           .run();
-          
+
         return new Response(JSON.stringify({ success: true }), { headers: { ...cors, "Content-Type": "application/json" } });
+        */
       }
       
       if (path === "/api/auth/login" && request.method === "POST") {
