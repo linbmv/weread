@@ -188,14 +188,14 @@ async function handle9kswCatalog(catalogUrl: string, cors: Record<string, string
   const titleMatch = html.match(/<title>([\s\S]*?)<\/title>/);
   if (titleMatch) title = titleMatch[1].split("_")[0].trim();
 
-  const catalogBlockMatch = html.match(/<div\s+[^>]*id=["']list-chapter["'][\s\S]*?<ul[^>]*class=["']list-chapter["'][^>]*>([\s\S]*?)<\/ul>/);
+  const catalogBlockMatch = html.match(/<div\s[^>]*id=["']list-chapter["'][\s\S]*?<ul[^>]*class=["']list-chapter["'][^>]*>([\s\S]*?)<\/ul>/);
   if (!catalogBlockMatch) {
     return new Response(JSON.stringify({ error: "未找到章节列表容器" }), { status: 404, headers: { ...cors, "Content-Type": "application/json" } });
   }
   const catalogBlock = catalogBlockMatch[1];
 
   const chaptersMap = new Map<string, { title: string; url: string; order: number }>();
-  const chapterLinkRegex = /<a\s+[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/g;
+  const chapterLinkRegex = /<a\s[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/g;
   let match: RegExpExecArray | null;
   let idx = 0;
   while ((match = chapterLinkRegex.exec(catalogBlock)) !== null) {
@@ -263,7 +263,7 @@ async function handle9kswChapter(chapterUrl: string, cors: Record<string, string
 
 // Main handler
 export default {
-  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+  async fetch(request: Request, env: Env, _ctx: ExecutionContext): Promise<Response> {
     const cors = corsHeaders(request);
     
     if (request.method === "OPTIONS") {
@@ -407,7 +407,7 @@ export default {
       }
       
       // 6. Delete Book
-      const bookMatch = path.match(/^\/api\/books\/([^\/]+)$/);
+      const bookMatch = path.match(/^\/api\/books\/([^/]+)$/);
       if (bookMatch && request.method === "DELETE") {
         const bookId = bookMatch[1];
         
@@ -427,7 +427,7 @@ export default {
       }
       
       // 7. Get Book Content (KV)
-      const contentMatch = path.match(/^\/api\/books\/([^\/]+)\/content$/);
+      const contentMatch = path.match(/^\/api\/books\/([^/]+)\/content$/);
       if (contentMatch && request.method === "GET") {
         const bookId = contentMatch[1];
         const kvKey = `book_content:${user.id}:${bookId}`;

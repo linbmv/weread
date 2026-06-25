@@ -1,7 +1,7 @@
 import { db } from '@/store';
 import { READER_SETTINGS_STORE_NAME } from '@/lib/readerStoreNames';
 import { safeReadStorage, safeWriteStorage } from '@/lib/utils';
-import { getAuthState, apiFetch } from '@/store/auth';
+import { apiFetch, getAuthState } from '@/store/auth';
 
 const syncSettingsCloud = async (): Promise<void> => {
   if (getAuthState().loggedIn) {
@@ -93,7 +93,7 @@ export const hydrateReaderSettingCache = async (): Promise<void> => {
     }
   }
 
-  for (const [key, record] of localMap.entries()) {
+  for (const [_key, record] of localMap.entries()) {
     if (record?.key && typeof record.value === 'string') {
       writeCachedReaderSetting(record.key, record.value);
     }

@@ -4,7 +4,7 @@ import { db } from '@/store';
 import { recordReaderReadingTime } from '@/lib/readerReadingTime';
 import { READER_PROGRESS_STORE_NAME } from '@/lib/readerStoreNames';
 import { clampRatio } from '@/lib/utils';
-import { getAuthState, apiFetch } from '@/store/auth';
+import { apiFetch, getAuthState } from '@/store/auth';
 
 export interface ReaderLocator {
   bookId: string;

@@ -4,7 +4,7 @@ import { persistReaderSetting, readCachedReaderSetting } from '@/lib/readerSetti
 import { READER_ANNOTATIONS_STORE_NAME } from '@/lib/readerStoreNames';
 import { clamp, createRandomId } from '@/lib/utils';
 import type { ReaderBlock, TextSyntaxTree } from '@/lib/transformText';
-import { getAuthState, apiFetch } from '@/store/auth';
+import { apiFetch, getAuthState } from '@/store/auth';
 
 export const syncAnnotationsForBook = (bookId: string): void => {
   if (getAuthState().loggedIn) {

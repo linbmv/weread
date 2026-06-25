@@ -209,4 +209,16 @@ export default tseslint.config(
       },
     },
   },
+  {
+    name: 'disables/browser',
+    files: ['store/**/*.ts', 'components/**/*.tsx', 'pages/**/*.tsx', 'lib/**/*.ts'],
+    languageOptions: {
+      globals: {
+        ...globals.browser,
+      },
+    },
+    rules: {
+      'n/no-unsupported-features/node-builtins': 'off', // Browser code, not Node.js
+    },
+  },
 );

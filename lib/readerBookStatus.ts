@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { READER_BOOK_STATUS_STORE_NAME } from '@/lib/readerStoreNames';
 import { EVENT_NAME, syncHook } from '@/lib/subscribe';
 import { db } from '@/store';
-import { getAuthState, apiFetch } from '@/store/auth';
+import { apiFetch, getAuthState } from '@/store/auth';
 
 const syncBookStatusCloud = (bookId: string, status: ReaderBookStatus | null): void => {
   if (getAuthState().loggedIn) {

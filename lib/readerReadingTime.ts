@@ -5,7 +5,7 @@ import {
 } from '@/lib/readerStoreNames';
 import { createRandomId } from '@/lib/utils';
 import type { ReaderReadingMode } from '@/lib/readerSettings';
-import { getAuthState, apiFetch } from '@/store/auth';
+import { apiFetch, getAuthState } from '@/store/auth';
 
 const syncReadingTimeCloud = async (): Promise<void> => {
   if (getAuthState().loggedIn) {

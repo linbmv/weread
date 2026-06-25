@@ -1,8 +1,8 @@
 import { useSyncExternalStore } from 'react';
 import type { BookInfo } from './books';
 import { addBook, deleteBookById, getAllBooks } from './books';
-import type { IDBResult } from '@/lib/indexedDB';
 import { resumeDB } from './index';
+import type { IDBResult } from '@/lib/indexedDB';
 import { getReaderProgress } from '@/lib/readerProgress';
 
 const MAX_BOOK_LOAD_RETRIES = 3;

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { login, register, getAuthState } from '@/store/auth';
+import { getAuthState, login, register } from '@/store/auth';
 
 interface LoginModalProps {
   isOpen: boolean;

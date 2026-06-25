@@ -86,7 +86,7 @@ async function authenticate(request, env) {
 }
 // Main handler
 export default {
-    async fetch(request, env, ctx) {
+    async fetch(request, env, _ctx) {
         const cors = corsHeaders(request);
         if (request.method === "OPTIONS") {
             return new Response(null, { headers: cors });
@@ -178,7 +178,7 @@ export default {
                 return new Response(JSON.stringify({ success: true, id: bookInfo.id }), { headers: { ...cors, "Content-Type": "application/json" } });
             }
             // 6. Delete Book
-            const bookMatch = path.match(/^\/api\/books\/([^\/]+)$/);
+            const bookMatch = path.match(/^\/api\/books\/([^/]+)$/);
             if (bookMatch && request.method === "DELETE") {
                 const bookId = bookMatch[1];
                 // Delete D1 Metadata
@@ -193,7 +193,7 @@ export default {
                 return new Response(JSON.stringify({ success: true }), { headers: { ...cors, "Content-Type": "application/json" } });
             }
             // 7. Get Book Content (KV)
-            const contentMatch = path.match(/^\/api\/books\/([^\/]+)\/content$/);
+            const contentMatch = path.match(/^\/api\/books\/([^/]+)\/content$/);
             if (contentMatch && request.method === "GET") {
                 const bookId = contentMatch[1];
                 const kvKey = `book_content:${user.id}:${bookId}`;

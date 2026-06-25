@@ -4,7 +4,7 @@ import { createRandomId, getErrorMessage, sha256Hex } from '@/lib/utils';
 import type { BookResourceRecord } from '@/lib/bookResources';
 import type { IDBResult } from '@/lib/indexedDB';
 import type { ReaderBookDocument, ReaderBookSourceType } from '@/lib/readerDocument';
-import { getAuthState, apiFetch } from '@/store/auth';
+import { apiFetch, getAuthState } from '@/store/auth';
 
 export interface BookInfo {
   id: string;

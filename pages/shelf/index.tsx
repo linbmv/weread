@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, memo } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useHref, useNavigate } from 'react-router-dom';
 import { BookCoverFallback } from '@/components/BookCard';
 import { Loading } from '@/components/Loading';
@@ -9,9 +9,9 @@ import { ROUTE_PATH, createReaderPath } from '@/router';
 import { OnlineSearch } from '@/components/OnlineSearch';
 import type { BookInfo } from '@/store/books';
 import {
+  deleteBookFromShelf,
   loadBookShelf,
   useBookShelf,
-  deleteBookFromShelf,
 } from '@/store/bookshelf';
 import { startSpaViewTransition } from '@/lib/navigation';
 import {

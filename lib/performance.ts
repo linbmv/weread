@@ -84,7 +84,7 @@ export const monitorLongTasks = (): void => {
     });
 
     observer.observe({ entryTypes: ['longtask'] });
-  } catch (e) {
+  } catch (_e) {
     // Long Task API not supported
   }
 };

@@ -1,8 +1,7 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiFetch, getAuthState } from '@/store/auth';
 import { ROUTE_PATH } from '@/router';
-import { t } from '@/locales';
 import './index.scss';
 
 interface User {

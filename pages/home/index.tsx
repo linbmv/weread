@@ -11,9 +11,8 @@ import {
   searchBooksByTitle,
 } from '@/store/books';
 import {
-  loadBookShelf,
   getBookRecentTimestamp,
-  addBookToShelf,
+  loadBookShelf,
   mergeBookShelf,
   useBookShelf,
 } from '@/store/bookshelf';
