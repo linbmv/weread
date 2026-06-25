@@ -14,6 +14,7 @@ import {
   useBookShelf,
 } from '@/store/bookshelf';
 import { startSpaViewTransition } from '@/lib/navigation';
+import { downloadBookAsTxt } from '@/lib/bookDownloader';
 import {
   type ReaderBookShelfStatus,
   getReaderBookShelfStatus,
@@ -201,6 +202,18 @@ const ShelfBookItem = memo(({ book }: { book: BookInfo }): React.JSX.Element => 
     }
   }, [id, title]);
 
+  // 下载书籍到本地
+  const handleDownload = useCallback(async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setShowContextMenu(false);
+
+    const result = await downloadBookAsTxt(id, title);
+    if (!result.success) {
+      alert(`下载失败: ${result.error}`);
+    }
+  }, [id, title]);
+
   return (
     <>
       <a
@@ -246,6 +259,7 @@ const ShelfBookItem = memo(({ book }: { book: BookInfo }): React.JSX.Element => 
         onClick={(e) => e.stopPropagation()}
       >
         <button onClick={(e) => { e.preventDefault(); openBook(e as any); }}>打开</button>
+        <button onClick={handleDownload}>下载</button>
         <button className="delete-button" onClick={handleDelete}>删除</button>
       </div>
     )}

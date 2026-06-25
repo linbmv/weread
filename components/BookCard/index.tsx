@@ -15,6 +15,7 @@ import { createReaderPath } from '@/router';
 import { useIsMobile } from '@/lib/hooks';
 import { useResolvedBookImage } from '@/lib/useResolvedBookImage';
 import { deleteBookFromShelf } from '@/store/bookshelf';
+import { downloadBookAsTxt } from '@/lib/bookDownloader';
 import './index.scss';
 
 interface BookCardProps {
@@ -111,6 +112,18 @@ export const BookCard = memo(({ book }: BookCardProps): React.JSX.Element => {
     }
   }, [id, title]);
 
+  // 下载书籍到本地
+  const handleDownload = useCallback(async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setShowContextMenu(false);
+
+    const result = await downloadBookAsTxt(id, title);
+    if (!result.success) {
+      alert(`下载失败: ${result.error}`);
+    }
+  }, [id, title]);
+
   return (
     <>
       <a
@@ -169,6 +182,7 @@ export const BookCard = memo(({ book }: BookCardProps): React.JSX.Element => {
         onClick={(e) => e.stopPropagation()}
       >
         <button onClick={(e) => { e.preventDefault(); onClick(e as any); }}>打开</button>
+        <button onClick={handleDownload}>下载</button>
         <button className="delete-button" onClick={handleDelete}>删除</button>
       </div>
     )}
