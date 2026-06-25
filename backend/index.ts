@@ -1,7 +1,8 @@
 /**
  * WeRead Backend API
- * Version: 1.0.1
+ * Version: 1.0.2
  * Auto-deploy enabled via GitHub Actions
+ * Last update: 2026-06-25
  */
 
 export interface Env {
