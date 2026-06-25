@@ -168,7 +168,7 @@ export const BookCard = memo(({ book }: BookCardProps): React.JSX.Element => {
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        <button onClick={onClick}>打开</button>
+        <button onClick={(e) => { e.preventDefault(); onClick(e as any); }}>打开</button>
         <button className="delete-button" onClick={handleDelete}>删除</button>
       </div>
     )}

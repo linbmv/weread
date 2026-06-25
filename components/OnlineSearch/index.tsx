@@ -271,7 +271,7 @@ export const OnlineSearch = ({ isOpen, onClose, initialKeyword }: OnlineSearchPr
       };
 
       const bookId = `9ksw-${currentNovelUrl.replace(/[^a-zA-Z0-9]/g, '')}`;
-      await addBook({
+      const result = await addBookToShelf({
         id: bookId,
         title: catalogTitle,
         author: '',
@@ -279,6 +279,11 @@ export const OnlineSearch = ({ isOpen, onClose, initialKeyword }: OnlineSearchPr
         sourceType: 'txt',
         overwrite: true,
       });
+
+      if (result.error) {
+        showGlobalFallback({ message: '导入书架失败: ' + result.message, tone: 'error' });
+        return;
+      }
 
       onClose();
       navigate(createReaderPath(bookId));

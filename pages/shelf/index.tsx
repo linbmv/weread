@@ -245,7 +245,7 @@ const ShelfBookItem = memo(({ book }: { book: BookInfo }): React.JSX.Element => 
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        <button onClick={openBook}>打开</button>
+        <button onClick={(e) => { e.preventDefault(); openBook(e as any); }}>打开</button>
         <button className="delete-button" onClick={handleDelete}>删除</button>
       </div>
     )}
