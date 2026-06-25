@@ -357,16 +357,20 @@ export const getBookById = async <T = unknown>(id: string): Promise<IDBResult<T>
 
     if (isPlaceholder) {
       // 优化：一次请求获取所有数据（document + resources + meta）
-      const { data: cloudData, error } = await apiFetch<{ document: any; resources: any; meta: any }>(`/api/books/${id}/content`);
+      const { data: cloudData, error } = await apiFetch<{ document: any; resources: any; meta?: any }>(
+        `/api/books/${id}/content`,
+      );
       if (!error && cloudData) {
+        // 兼容旧后端：优先使用 meta，回退到 book placeholder
+        const meta = cloudData.meta;
         const bookInfo = {
           id,
-          title: cloudData.meta?.title || book?.title || '未知小说',
-          author: cloudData.meta?.author || book?.author || '',
-          image: cloudData.meta?.image || book?.image || '',
-          sourceType: cloudData.meta?.source_type || book?.sourceType || 'txt',
-          createTime: cloudData.meta?.create_time || book?.createTime || Date.now(),
-          modifyTime: cloudData.meta?.modify_time || book?.modifyTime || Date.now(),
+          title: meta?.title || book?.title || cloudData.document?.title || '未知小说',
+          author: meta?.author || book?.author || cloudData.document?.author || '',
+          image: meta?.image || book?.image || '',
+          sourceType: meta?.source_type || book?.sourceType || 'txt',
+          createTime: meta?.create_time || book?.createTime || Date.now(),
+          modifyTime: meta?.modify_time || book?.modifyTime || Date.now(),
           document: cloudData.document,
         };
 
@@ -377,16 +381,20 @@ export const getBookById = async <T = unknown>(id: string): Promise<IDBResult<T>
 
         if (cloudData.resources && cloudData.resources.length > 0) {
           persistPromises.push(
-            persistBookResources(cloudData.resources.map((record: any) => ({ ...record, bookId: id })))
-              .catch((e) => {
-                console.error('Failed to persist book resources:', e);
-              })
+            persistBookResources(cloudData.resources.map((record: any) => ({ ...record, bookId: id }))).catch((e) => {
+              console.error('Failed to persist book resources:', e);
+            }),
           );
         }
 
         await Promise.all(persistPromises);
 
         return successResult(bookInfo as unknown as T);
+      }
+
+      // 🐛 修复：如果云端加载失败，返回错误而不是 undefined
+      if (error) {
+        return errorResult(`Failed to load book from cloud: ${error}`);
       }
     }
   }
