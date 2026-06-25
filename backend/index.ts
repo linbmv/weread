@@ -432,12 +432,31 @@ export default {
         const bookId = contentMatch[1];
         const kvKey = `book_content:${user.id}:${bookId}`;
         const content = await env.BOOKS_KV.get(kvKey);
-        
+
         if (!content) {
           return new Response(JSON.stringify({ error: "未找到书籍正文内容" }), { status: 404, headers: { ...cors, "Content-Type": "application/json" } });
         }
-        
-        return new Response(content, { headers: { ...cors, "Content-Type": "application/json" } });
+
+        // 同时查询书籍元数据，避免前端二次请求
+        const bookMeta: any = await env.DB.prepare(
+          "SELECT id, title, author, image, source_type, create_time, modify_time FROM books WHERE user_id = ? AND id = ?"
+        ).bind(user.id, bookId).first();
+
+        const parsedContent = JSON.parse(content);
+        const response = {
+          ...parsedContent,
+          meta: bookMeta ? {
+            id: bookMeta.id,
+            title: bookMeta.title,
+            author: bookMeta.author,
+            image: bookMeta.image,
+            source_type: bookMeta.source_type,
+            create_time: bookMeta.create_time,
+            modify_time: bookMeta.modify_time,
+          } : null,
+        };
+
+        return new Response(JSON.stringify(response), { headers: { ...cors, "Content-Type": "application/json" } });
       }
       
       // 8. Sync APIs

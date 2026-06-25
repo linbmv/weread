@@ -4,6 +4,7 @@ import { addBook, deleteBookById, getAllBooks } from './books';
 import { resumeDB } from './index';
 import type { IDBResult } from '@/lib/indexedDB';
 import { getReaderProgress } from '@/lib/readerProgress';
+import { bookPreloader } from '@/lib/bookPreloader';
 
 const MAX_BOOK_LOAD_RETRIES = 3;
 
@@ -133,6 +134,31 @@ export const loadBookShelf = async (): Promise<void> => {
       const result = await getAllBooks<BookInfo>();
       if (!result.error) {
         replaceBookShelfFromLoad(result.data);
+
+        // 🚀 后台预加载：按最近阅读时间排序，优先加载常读的书
+        if (result.data.length > 0) {
+          const booksWithRecency = result.data.map((book) => {
+            const progress = getReaderProgress(book.id);
+            return {
+              book,
+              lastRead: progress?.updatedAt || 0,
+            };
+          });
+
+          // 按最近阅读排序
+          booksWithRecency.sort((a, b) => b.lastRead - a.lastRead);
+
+          // 预加载前 10 本书（优先级 0-9）
+          booksWithRecency.slice(0, 10).forEach((item, index) => {
+            bookPreloader.addTask(item.book.id, index);
+          });
+
+          // 其他书籍低优先级预加载
+          booksWithRecency.slice(10).forEach((item, index) => {
+            bookPreloader.addTask(item.book.id, 10 + index);
+          });
+        }
+
         return;
       }
       attempts += 1;

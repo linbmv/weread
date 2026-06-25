@@ -350,43 +350,47 @@ export const getAllBooks = async <T = unknown>(): Promise<IDBResult<T[]>> => {
 
 export const getBookById = async <T = unknown>(id: string): Promise<IDBResult<T>> => {
   const localResult = await performWorkerOperation<T>('get', { key: id });
-  
+
   if (getAuthState().loggedIn) {
     const book = localResult.data as any;
     const isPlaceholder = !book || !book.document || !book.document.chapters || book.document.chapters.length === 0;
-    
+
     if (isPlaceholder) {
-      const { data: cloudContent, error } = await apiFetch<{ document: any; resources: any }>(`/api/books/${id}/content`);
-      if (!error && cloudContent) {
-        const cloudListRes = await apiFetch<any[]>('/api/books');
-        const cloudMeta = cloudListRes.data?.find((b: any) => b.id === id);
-        
+      // 优化：一次请求获取所有数据（document + resources + meta）
+      const { data: cloudData, error } = await apiFetch<{ document: any; resources: any; meta: any }>(`/api/books/${id}/content`);
+      if (!error && cloudData) {
         const bookInfo = {
           id,
-          title: cloudMeta?.title || book?.title || '未知小说',
-          author: cloudMeta?.author || book?.author || '',
-          image: cloudMeta?.image || book?.image || '',
-          sourceType: cloudMeta?.source_type || book?.sourceType || 'txt',
-          createTime: cloudMeta?.create_time || book?.createTime || Date.now(),
-          modifyTime: cloudMeta?.modify_time || book?.modifyTime || Date.now(),
-          document: cloudContent.document,
+          title: cloudData.meta?.title || book?.title || '未知小说',
+          author: cloudData.meta?.author || book?.author || '',
+          image: cloudData.meta?.image || book?.image || '',
+          sourceType: cloudData.meta?.source_type || book?.sourceType || 'txt',
+          createTime: cloudData.meta?.create_time || book?.createTime || Date.now(),
+          modifyTime: cloudData.meta?.modify_time || book?.modifyTime || Date.now(),
+          document: cloudData.document,
         };
-        
-        await performWorkerOperation('put', { bookInfo });
-        
-        if (cloudContent.resources && cloudContent.resources.length > 0) {
-          try {
-            await persistBookResources(cloudContent.resources.map((record: any) => ({ ...record, bookId: id })));
-          } catch (e) {
-            console.error('Failed to persist book resources:', e);
-          }
+
+        // 并行执行：写入 IndexedDB 和持久化资源
+        const persistPromises: Promise<any>[] = [
+          performWorkerOperation('put', { bookInfo }),
+        ];
+
+        if (cloudData.resources && cloudData.resources.length > 0) {
+          persistPromises.push(
+            persistBookResources(cloudData.resources.map((record: any) => ({ ...record, bookId: id })))
+              .catch((e) => {
+                console.error('Failed to persist book resources:', e);
+              })
+          );
         }
-        
+
+        await Promise.all(persistPromises);
+
         return successResult(bookInfo as unknown as T);
       }
     }
   }
-  
+
   return localResult;
 };
 
